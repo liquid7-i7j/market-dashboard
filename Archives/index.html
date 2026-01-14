@@ -1,0 +1,1027 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Market Dashboard - Terminal</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState } = React;
+
+    // ============================================
+    // DONNÉES - Modifier ici pour mettre à jour
+    // ============================================
+
+    const data = {
+      lastUpdate: "08/01/2026 23:45",
+      globalSentiment: "bearish",
+      summary: "GLOBAL : Métaux surachat extrême en Monthly, GOLD Cup n Handle vs SPX, BTC bear market, retest 100K CT possible.",
+
+      nextEvent: { name: "FOMC", date: "27 Jan 2026", daysLeft: 19, expected: "???" },
+
+      recentEvents: "Fin QT + stealth QE | Unemployment & Payroll sous attentes | Risques géo: Iran, Groenland, LatAm",
+
+      proverbs: [
+        "En bear, n'achète jamais du vert",
+        "En bull, ne vends jamais du rouge",
+        "Patience > FOMO",
+        "Social risk à 0 ≠ sans risque",
+        "Préserve ta situation",
+      ],
+
+      situation: [
+        { secteur: "Métaux", m: "neutre", h: "neutre", j: "neutre", action: "Bull mais surachat extrême M. GOLD rachat 4300-4350 D" },
+        { secteur: "Actions US", m: "neutre", h: "neutre", j: "neutre", action: "Bull structurel, niveaux premium. Attendre correction" },
+        { secteur: "BTC", m: "bearish", h: "neutre", j: "neutre", action: "Bear market fin de cycle, test 100k possible CT, support LT ~60k" },
+        { secteur: "ETH", m: "bearish", h: "neutre", j: "neutre", action: "Suit BTC, support ~2k" },
+        { secteur: "Altcoins", m: "bearish", h: "neutre", j: "neutre", action: "Attractifs mais BTC bear + social risk ~0. Timer via ratios" },
+      ],
+
+      vueGlobale: [
+        { param: "WALCL", status: "neutre", signal: "QT terminé, stealth QE. Historiquement = bear/neutre", importance: "haute" },
+        { param: "GOLD/SPX", status: "bullish", signal: "Cup & handle D/W, résistance ou poussée puis fin bullrun", importance: "moyenne" },
+        { param: "BTC/GOLD", status: "bearish", signal: "Distribution confirmée. Attendre ratios 16-13", importance: "moyenne" },
+        { param: "BTC/SPX", status: "bearish", signal: "Support vers 1000", importance: "moyenne" },
+        { param: "STABLES.D", status: "bullish", signal: "Structure haussière, pullback possible CT", importance: "haute" },
+        { param: "BTC.D", status: "neutre", signal: "Dominance élevée, baisse possible même si BTC baisse", importance: "haute" },
+        { param: "ALTS/BTC", status: "bearish", signal: "Ne rentrer sur alts que sur dips de ce ratio", importance: "haute" },
+        { param: "ETH/BTC", status: "bearish", signal: "Sur trendline, privilégier baisse vu situation", importance: "haute" },
+        { param: "SOCIAL RISK", status: "bearish", signal: "Proche 0 = désintérêt, personne pour pump", importance: "moyenne" },
+      ],
+
+      techniques: [
+        { actif: "GOLD", m: "—", h: "—", j: "—" },
+        { actif: "SILVER", m: "—", h: "—", j: "—" },
+        { actif: "NVDA", m: "—", h: "—", j: "—" },
+        { actif: "GOOG", m: "—", h: "—", j: "—" },
+        { actif: "MSFT", m: "—", h: "—", j: "—" },
+        { actif: "TSLA", m: "—", h: "—", j: "—" },
+        { actif: "BTC", m: "bearish", h: "neutre", j: "neutre" },
+        { actif: "ETH", m: "—", h: "neutre", j: "—" },
+        { actif: "SOL", m: "—", h: "—", j: "—" },
+        { actif: "LINK", m: "—", h: "—", j: "—" },
+        { actif: "XMR", m: "—", h: "—", j: "—" },
+        { actif: "HYPE", m: "—", h: "—", j: "—" },
+        { actif: "AAVE", m: "—", h: "—", j: "—" },
+        { actif: "ASTER", m: "—", h: "—", j: "—" },
+        { actif: "PUMP", m: "—", h: "—", j: "—" },
+        { actif: "KAS", m: "—", h: "—", j: "—" },
+        { actif: "LIT", m: "—", h: "—", j: "—" },
+      ],
+
+      calendrier: [
+        { date: "6 Jan 2026", event: "MSCI Décision", type: "Indices", status: "bullish", signal: "✓ Entreprises crypto gardées", notes: "MSTR, Metaplanet restent dans indices" },
+        { date: "Jan-Fév 2026", event: "SCOTUS Tarifs", type: "Supreme Court", status: "neutre", signal: "Décision imminente sur IEEPA", notes: "Peut invalider tarifs Trump, $100B+ refunds" },
+        { date: "Jan 2026", event: "Nomination Fed Chair", type: "Fed", status: "neutre", signal: "Warsh vs Hassett ('Two Kevins')", notes: "Annonce attendue début 2026" },
+        { date: "16 Jan 2026", event: "Rapport Section 232", type: "Commerce", status: "", signal: "Heavy trucks/buses", notes: "Potentiels nouveaux tarifs" },
+        { date: "27-28 Jan 2026", event: "FOMC", type: "Fed", status: "neutre", signal: "Hold attendu (>80%)", notes: "" },
+        { date: "6 Fév 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données janvier", notes: "8:30 AM ET" },
+        { date: "6 Mar 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données février", notes: "8:30 AM ET" },
+        { date: "17-18 Mar 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "12 Mar 2026", event: "Tarifs Pâtes", type: "Commerce", status: "", signal: "Décision finale", notes: "Tarifs imports pâtes italiennes" },
+        { date: "3 Avr 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données mars", notes: "8:30 AM ET" },
+        { date: "28-29 Avr 2026", event: "FOMC", type: "Fed", status: "", signal: "", notes: "" },
+        { date: "1 Mai 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données avril", notes: "8:30 AM ET" },
+        { date: "15 Mai 2026", event: "Fin mandat Powell", type: "Fed", status: "", signal: "Nouveau Fed Chair", notes: "Transition leadership Fed" },
+        { date: "5 Juin 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données mai", notes: "8:30 AM ET" },
+        { date: "16-17 Juin 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "3 Juil 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données juin", notes: "8:30 AM ET" },
+        { date: "28-29 Juil 2026", event: "FOMC", type: "Fed", status: "", signal: "", notes: "" },
+        { date: "7 Août 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données juillet", notes: "8:30 AM ET" },
+        { date: "4 Sep 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données août", notes: "8:30 AM ET" },
+        { date: "15-16 Sep 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "2 Oct 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données septembre", notes: "8:30 AM ET" },
+        { date: "27-28 Oct 2026", event: "FOMC", type: "Fed", status: "", signal: "", notes: "" },
+        { date: "6 Nov 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données octobre", notes: "8:30 AM ET" },
+        { date: "4 Déc 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données novembre", notes: "8:30 AM ET" },
+        { date: "8-9 Déc 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "2026 (TBD)", event: "ETH Glamsterdam", type: "Crypto", status: "", signal: "Upgrade Ethereum", notes: "Après Fusaka (Dec 2025)" },
+        { date: "Fin 2026 (TBD)", event: "ETH Hegota", type: "Crypto", status: "", signal: "Verkle Trees, state expiry", notes: "Focus sur state bloat" },
+      ],
+
+      macroLiquidite: [
+        { param: "WALCL", status: "neutre", signal: "QT terminé, stealth QE. Historiquement = bear/neutre", ticker: "FRED:WALCL", notes: "FED Balance Sheet" },
+        { param: "DXY", status: "bearish", signal: "~98.5 | Support 97-98", ticker: "TVC:DXY", notes: "-9% sur 12 mois" },
+        { param: "SPX", status: "bullish", signal: "ATH 6960", ticker: "SP:SPX", notes: "Nouveau ATH Jan 2026" },
+        { param: "NASDAQ", status: "bullish", signal: "Proche ATH", ticker: "NASDAQ:NDX", notes: "" },
+        { param: "SPY/RSP", status: "bearish", signal: "Top 10 = 40% du S&P", ticker: "SPY/RSP", notes: "Concentration record" },
+        { param: "EUR/USD", status: "bullish", signal: "~1.17", ticker: "FX:EURUSD", notes: "" },
+      ],
+
+      fluxCrypto: [
+        { param: "STABLES.D", status: "bullish", signal: "Structure haussière, pullback possible CT", ticker: "(CRYPTOCAP:USDT+CRYPTOCAP:USDC)/CRYPTOCAP:TOTAL", notes: "Cash en attente vs déployé" },
+        { param: "BTC.D", status: "neutre", signal: "Dominance élevée, baisse possible même si BTC baisse", ticker: "CRYPTOCAP:BTC.D", notes: "Pas d'alt season" },
+        { param: "ALTS/BTC", status: "bearish", signal: "Ne rentrer sur alts que sur dips de ce ratio", ticker: "(CRYPTOCAP:TOTAL3-CRYPTOCAP:USDT)/CRYPTOCAP:BTC*100", notes: "Alts hors ETH vs BTC" },
+        { param: "OTHERS", status: "neutre", signal: "À vérifier", ticker: "CRYPTOCAP:OTHERS", notes: "Small/mid caps" },
+      ],
+
+      ratios: [
+        { param: "ETH/BTC", status: "bearish", signal: "Sur trendline, privilégier baisse vu situation", ticker: "ETHBTC", importance: "haute", notes: "Ratio bas historique ~0.035" },
+        { param: "BTC/GOLD", status: "bearish", signal: "Distribution confirmée. Attendre ratios 16-13", ticker: "BTCUSD/XAUUSD", importance: "moyenne", notes: "Digital gold thesis" },
+        { param: "BTC/SPX", status: "bearish", signal: "Support vers 1000", ticker: "BTCUSD/SPX", importance: "moyenne", notes: "Crypto vs equity" },
+        { param: "GOLD/SPX", status: "bullish", signal: "Cup & handle D/W, résistance ou poussée puis fin bullrun", ticker: "XAUUSD/SPX", importance: "basse", notes: "Risk-on vs risk-off" },
+      ],
+
+      sentiment: [
+        { param: "SIMPLIFIED RISK METRIC", status: "neutre", signal: "À vérifier", source: "TradingView", link: "Script jacdr", notes: "Proxy Social Risk (gratuit)" },
+        { param: "LIQUIDATION MAP", status: "neutre", signal: "À vérifier", source: "Coinglass", link: "coinglass.com/LiquidationData", notes: "Zones de liquidations" },
+      ],
+
+      actifs: [
+        { actif: "GOLD", type: "Commodity", secteur: "Métaux", status: "neutre", signal: "", ticker: "XAUUSD", notes: "" },
+        { actif: "SILVER", type: "Commodity", secteur: "Métaux", status: "neutre", signal: "", ticker: "XAGUSD", notes: "" },
+        { actif: "NVDA", type: "Action", secteur: "Tech/AI", status: "neutre", signal: "", ticker: "NVDA", notes: "" },
+        { actif: "GOOG", type: "Action", secteur: "Tech", status: "neutre", signal: "", ticker: "GOOG", notes: "" },
+        { actif: "MSFT", type: "Action", secteur: "Tech", status: "neutre", signal: "", ticker: "MSFT", notes: "" },
+        { actif: "TSLA", type: "Action", secteur: "Tech/Auto", status: "neutre", signal: "", ticker: "TSLA", notes: "" },
+        { actif: "BTC", type: "Crypto", secteur: "L1", status: "bearish", signal: "Bear market, test 100k possible CT", ticker: "BTCUSD", notes: "" },
+        { actif: "ETH", type: "Crypto", secteur: "L1", status: "neutre", signal: "", ticker: "ETHUSD", notes: "" },
+        { actif: "SOL", type: "Crypto", secteur: "L1", status: "neutre", signal: "", ticker: "SOLUSD", notes: "" },
+        { actif: "LINK", type: "Crypto", secteur: "Oracle", status: "neutre", signal: "", ticker: "LINKUSD", notes: "Chainlink" },
+        { actif: "XMR", type: "Crypto", secteur: "Privacy", status: "neutre", signal: "", ticker: "XMRUSD", notes: "Monero" },
+        { actif: "HYPE", type: "Crypto", secteur: "DeFi/Perps", status: "neutre", signal: "", ticker: "HYPEUSD", notes: "Hyperliquid" },
+        { actif: "AAVE", type: "Crypto", secteur: "DeFi/Lending", status: "neutre", signal: "", ticker: "AAVEUSD", notes: "" },
+        { actif: "ASTER", type: "Crypto", secteur: "DeFi/Perps", status: "neutre", signal: "", ticker: "ASTERUSD", notes: "asterdex.com" },
+        { actif: "PUMP", type: "Crypto", secteur: "DeFi", status: "neutre", signal: "", ticker: "PUMPUSD", notes: "pump.fun" },
+        { actif: "KAS", type: "Crypto", secteur: "L1", status: "neutre", signal: "", ticker: "KASUSD", notes: "Kaspa" },
+        { actif: "LIT", type: "Crypto", secteur: "À définir", status: "neutre", signal: "", ticker: "LITUSD", notes: "" },
+      ],
+
+      defi: [
+        { metric: "OI Hyperliquid", status: "", signal: "", source: "Hyperliquid", link: "app.hyperliquid.xyz", notes: "" },
+        { metric: "OI Lighter", status: "", signal: "", source: "Lighter", link: "", notes: "" },
+        { metric: "OI Aster", status: "", signal: "", source: "Aster", link: "", notes: "" },
+        { metric: "Revenus apps", status: "", signal: "", source: "DefiLlama", link: "defillama.com/fees", notes: "" },
+        { metric: "Market share HL", status: "", signal: "", source: "DefiLlama", link: "defillama.com/protocol/hyperliquid", notes: "vs marché perps" },
+        { metric: "TVL Total", status: "", signal: "", source: "DefiLlama", link: "defillama.com", notes: "" },
+      ],
+
+      secteurs: [
+        { secteur: "AI", description: "Intelligence artificielle", actions: "NVDA, GOOG, MSFT, META", etfs: "À rechercher", notes: "" },
+        { secteur: "Robotique", description: "Robots industriels & humanoïdes", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Espace", description: "Exploration spatiale & satellites", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Militaire/Défense", description: "Armement & défense", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Génétique/Biotech", description: "Biotechnologies & édition génétique", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Énergie Nucléaire", description: "Nucléaire & uranium", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Quantique", description: "Informatique quantique", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+      ],
+
+      onchain: [
+        { platform: "Hyperliquid", type: "DEX", metaux: "XAUT (spot)", actions: "Perps", notes: "app.hyperliquid.xyz" },
+        { platform: "Lighter", type: "DEX", metaux: "—", actions: "Perps", notes: "lighter.xyz" },
+        { platform: "Aster", type: "DEX", metaux: "—", actions: "Perps", notes: "asterdex.com" },
+        { platform: "Vest", type: "DEX", metaux: "—", actions: "Perps", notes: "vest.exchange" },
+        { platform: "MEXC", type: "CEX", metaux: "XAUT (spot)", actions: "—", notes: "mexc.com" },
+        { platform: "Truc Solana", type: "DEX", metaux: "?", actions: "?", notes: "À vérifier" },
+      ],
+
+      notesITC: [
+        { indicateur: "Social Risk", description: "Mesure intérêt retail (YT, Twitter)", utilite: "Identifier tops de cycle", alternative: "Simplified Risk Metric" },
+        { indicateur: "Bitcoin Risk Metric", description: "Niveau de risque BTC 0-1", utilite: "Zones accumulation/distribution", alternative: "Simplified Risk Metric" },
+        { indicateur: "Logarithmic Regression", description: "Bandes de régression log", utilite: "Fair value BTC/ETH", alternative: "Gratuit sur ITC" },
+        { indicateur: "DCA Simulator", description: "Simulation DCA", utilite: "Backtesting stratégies", alternative: "" },
+      ],
+    };
+
+    // ============================================
+    // FONCTIONS UTILITAIRES
+    // ============================================
+
+    const statusColor = (s) => {
+      if (!s || s === "—" || s === "") return "#3a3a3a";
+      if (s === "bullish") return "#00ff9d";
+      if (s === "bearish") return "#ff5533";
+      return "#666";
+    };
+
+    const getActionColor = (m, h, j) => {
+      const statuses = [m, h, j].filter(s => s && s !== "—");
+      if (statuses.length === 0) return "#666";
+      const hasBullish = statuses.some(s => s.includes("bullish"));
+      const hasBearish = statuses.some(s => s.includes("bearish"));
+      if (hasBullish && hasBearish) return "#888";
+      if (hasBullish) return "#00ff9d";
+      if (hasBearish) return "#ff5533";
+      return "#666";
+    };
+
+    // ============================================
+    // COMPOSANTS
+    // ============================================
+
+    const StatusBadge = ({ status }) => {
+      const color = statusColor(status);
+      const label = !status || status === "—" || status === "" ? "—" : status.toUpperCase().slice(0, 4);
+      const isNeutral = !status || status === "neutre" || status === "—" || status === "";
+      return (
+        <span style={{
+          color,
+          backgroundColor: isNeutral ? "#1a1a1a" : `${color}12`,
+          padding: "4px 12px",
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: 0.5,
+          border: isNeutral ? "1px solid #444" : `1px solid ${color}50`
+        }}>
+          {label}
+        </span>
+      );
+    };
+
+    const StatusDot = ({ status }) => {
+      const color = statusColor(status);
+      return (
+        <span style={{
+          display: "inline-block",
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          backgroundColor: color,
+          boxShadow: status && status !== "—" ? `0 0 6px ${color}` : "none"
+        }} />
+      );
+    };
+
+    // ============================================
+    // ONGLETS - CONTENU
+    // ============================================
+
+    const TabDashboard = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Dashboard</div>
+        {/* Bandeau haut statique */}
+        <div className="static-banner" style={{ background: data.globalSentiment === "bearish" ? "rgba(80, 30, 20, 0.5)" : data.globalSentiment === "bullish" ? "rgba(0, 50, 40, 0.5)" : "rgba(40, 40, 40, 0.5)", flexDirection: "column", gap: 8 }}>
+          <span className="banner-item banner-summary" style={{ color: data.globalSentiment === "bearish" ? "#ff5533" : data.globalSentiment === "bullish" ? "#00ff9d" : "#888" }}>
+            ▸ {data.summary}
+          </span>
+          <span className="banner-item banner-alert">
+            ▲ {data.nextEvent.name} | {data.nextEvent.date} | Attendu: {data.nextEvent.expected}
+          </span>
+        </div>
+
+        <div className="three-cols">
+          <div className="col-box">
+            <div className="col-header">ACTIFS</div>
+            <div className="sit-header-compact">
+              <span>Secteur</span>
+              <span>M</span>
+              <span>W</span>
+              <span>D</span>
+              <span>Action</span>
+            </div>
+            {data.situation.map((row, i) => (
+              <div key={i} className="sit-row-compact">
+                <span style={{ color: "#e0e0e0", fontWeight: 500, textTransform: "uppercase" }}>{row.secteur}</span>
+                <span><StatusDot status={row.m} /></span>
+                <span><StatusDot status={row.h} /></span>
+                <span><StatusDot status={row.j} /></span>
+                <span style={{ color: getActionColor(row.m, row.h, row.j), fontSize: 13 }}>{row.action}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="col-box">
+            <div className="col-header">PARAMÈTRES ET RATIOS</div>
+            {data.vueGlobale.map((row, i) => (
+              <div key={i} className="param-row-compact">
+                <span style={{ color: "#e0e0e0", fontWeight: 500, minWidth: 100, maxWidth: 140 }}>{row.param}</span>
+                <span style={{ fontSize: 13, flex: 1, minWidth: 0 }}>
+                  <span style={{ color: statusColor(row.status) }}>{row.signal}</span>
+                  {row.warning && <span style={{ color: "#ff5533", marginLeft: 8 }}>⚠ {row.warning}</span>}
+                </span>
+                <StatusDot status={row.status} />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bandeau bas défilant - fixé en bas */}
+        <div className="scrolling-banner" style={{ background: "rgba(30, 30, 30, 0.5)", position: "fixed", bottom: 0, left: 200, right: 0, zIndex: 100 }}>
+          <div className="scrolling-content-fast">
+            {data.proverbs.map((proverb, i) => (
+              <React.Fragment key={i}>
+                <span className="banner-item" style={{ color: "#888" }}>
+                  ◆ RECENT: {data.recentEvents}
+                </span>
+                <span className="banner-separator">•••</span>
+                <span className="banner-item" style={{ color: "#666", fontStyle: "italic" }}>
+                  {proverb}
+                </span>
+                <span className="banner-separator">•••</span>
+              </React.Fragment>
+            ))}
+            {data.proverbs.map((proverb, i) => (
+              <React.Fragment key={`dup-${i}`}>
+                <span className="banner-item" style={{ color: "#888" }}>
+                  ◆ RECENT: {data.recentEvents}
+                </span>
+                <span className="banner-separator">•••</span>
+                <span className="banner-item" style={{ color: "#666", fontStyle: "italic" }}>
+                  {proverb}
+                </span>
+                <span className="banner-separator">•••</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+      </>
+    );
+
+    const TabCalendrier = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Calendrier</div>
+        <div className="corner-box">
+        {data.calendrier.map((row, i) => {
+          const typeColor = {
+            "Fed": "#f59e0b",
+            "Supreme Court": "#ef4444",
+            "Commerce": "#f97316",
+            "Indices": "#00ff9d",
+            "Crypto": "#8b5cf6",
+            "Emploi": "#3b82f6"
+          }[row.type] || "#666";
+
+          const typeBg = {
+            "Fed": "#1a150a",
+            "Supreme Court": "#1a0f0f",
+            "Commerce": "#1a120a",
+            "Indices": "#0a1a0a",
+            "Crypto": "#120a1a",
+            "Emploi": "#0a0f1a"
+          }[row.type] || "transparent";
+
+          return (
+            <div key={i} className="cal-row-v2" style={{
+              borderLeft: `3px solid ${typeColor}`,
+              background: typeBg
+            }}>
+              <div className="cal-date">{row.date}</div>
+              <div className="cal-content">
+                <div className="cal-event">
+                  <span style={{ color: row.status === "bullish" ? "#00ff9d" : "#e0e0e0", fontWeight: 600 }}>
+                    {row.event}
+                  </span>
+                  <span style={{ color: typeColor, fontSize: 10, marginLeft: 8 }}>{row.type}</span>
+                </div>
+                <div className="cal-signal">{row.signal}</div>
+                {row.notes && <div className="cal-notes">{row.notes}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      </>
+    );
+
+    const TabMacro = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Paramètres & Ratios</div>
+        <div className="macro-grid">
+          <div className="corner-box">
+          <div className="section-header">Macro & Liquidité</div>
+          {data.macroLiquidite.map((row, i) => (
+            <div key={i} className="generic-row">
+              <span style={{ fontWeight: 600, color: "#e0e0e0", minWidth: 80 }}>{row.param}</span>
+              <span style={{ color: "#888", fontSize: 13, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <StatusBadge status={row.status} />
+            </div>
+          ))}
+        </div>
+
+        <div className="corner-box">
+          <div className="section-header">Flux Crypto</div>
+          {data.fluxCrypto.map((row, i) => (
+            <div key={i} className="generic-row">
+              <span style={{ fontWeight: 600, color: "#e0e0e0", minWidth: 100, fontSize: 12 }}>{row.param}</span>
+              <span style={{ color: "#888", fontSize: 13, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <StatusBadge status={row.status} />
+            </div>
+          ))}
+        </div>
+
+        <div className="corner-box">
+          <div className="section-header">Ratios</div>
+          {data.ratios.map((row, i) => (
+            <div key={i} className="generic-row">
+              <span style={{ fontWeight: 600, color: "#e0e0e0", minWidth: 80 }}>{row.param}</span>
+              <span style={{ color: "#888", fontSize: 13, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <StatusBadge status={row.status} />
+            </div>
+          ))}
+        </div>
+
+        <div className="corner-box">
+          <div className="section-header">Sentiment & Risque</div>
+          {data.sentiment.map((row, i) => (
+            <div key={i} className="generic-row">
+              <span style={{ fontWeight: 600, color: "#e0e0e0", minWidth: 120, fontSize: 12 }}>{row.param}</span>
+              <span style={{ color: "#666", fontSize: 12, flex: 1, minWidth: 0 }}>{row.source}</span>
+              <StatusBadge status={row.status} />
+            </div>
+          ))}
+        </div>
+      </div>
+      </>
+    );
+
+    const TabActifs = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Actifs</div>
+        <div className="corner-box">
+        <div className="actifs-header">
+          <span>#</span>
+          <span>Actif</span>
+          <span>Type</span>
+          <span>Secteur</span>
+          <span>Signal</span>
+          <span>Statut</span>
+          <span>Notes</span>
+        </div>
+        {data.actifs.map((row, i) => (
+          <div key={i} className="actifs-row">
+            <span style={{ color: "#555", fontSize: 12 }}>{i + 1}</span>
+            <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{row.actif}</span>
+            <span style={{ color: "#666", fontSize: 13 }}>{row.type}</span>
+            <span style={{ color: "#888", fontSize: 13 }}>{row.secteur}</span>
+            <span style={{ color: "#888", fontSize: 13 }}>{row.signal}</span>
+            <span><StatusBadge status={row.status} /></span>
+            <span style={{ color: "#555", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabSecteurs = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Secteurs</div>
+        <div className="corner-box">
+        <div className="secteurs-header">
+          <span>Secteur</span>
+          <span>Description</span>
+          <span>Actions</span>
+          <span>ETFs</span>
+          <span>Notes</span>
+        </div>
+        {data.secteurs.map((row, i) => (
+          <div key={i} className="secteurs-row">
+            <span style={{ fontWeight: 600, color: "#e0e0e0", textTransform: "uppercase" }}>{row.secteur}</span>
+            <span style={{ color: "#888", fontSize: 12 }}>{row.description}</span>
+            <span style={{ color: row.actions === "À rechercher" ? "#555" : "#e0e0e0", fontSize: 12 }}>{row.actions}</span>
+            <span style={{ color: row.etfs === "À rechercher" ? "#555" : "#e0e0e0", fontSize: 12 }}>{row.etfs}</span>
+            <span style={{ color: "#555", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabDeFi = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>DeFi</div>
+        <div className="corner-box">
+        <div className="defi-header">
+          <span>Métrique</span>
+          <span>Source</span>
+          <span>Statut</span>
+          <span>Notes</span>
+        </div>
+        {data.defi.map((row, i) => (
+          <div key={i} className="defi-row">
+            <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{row.metric}</span>
+            <span style={{ color: "#00ff9d", fontSize: 13 }}>{row.source}</span>
+            <span><StatusBadge status={row.status} /></span>
+            <span style={{ color: "#555", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabOnchain = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Actions & Métaux Onchain</div>
+        <div className="corner-box">
+        <div className="onchain-header">
+          <span>Plateforme</span>
+          <span>Type</span>
+          <span>Métaux</span>
+          <span>Actions</span>
+          <span>Lien</span>
+        </div>
+        {data.onchain.map((row, i) => (
+          <div key={i} className="onchain-row">
+            <span style={{ fontWeight: 600, color: "#e0e0e0", textTransform: "uppercase" }}>{row.platform}</span>
+            <span style={{ color: row.type === "DEX" ? "#00ff9d" : "#f59e0b", fontSize: 13 }}>{row.type}</span>
+            <span style={{ color: row.metaux !== "—" ? "#00ff9d" : "#444", fontSize: 13 }}>{row.metaux}</span>
+            <span style={{ color: row.actions !== "—" ? "#00ff9d" : "#444", fontSize: 13 }}>{row.actions}</span>
+            <span style={{ color: "#666", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabNotes = () => (
+      <>
+        <div className="section-header" style={{ marginBottom: 16, color: "#00ff9d" }}>Notes ITC</div>
+        <div className="corner-box">
+        <div style={{ padding: "16px 20px", color: "#666", fontSize: 13, borderBottom: "1px solid #1a1a1a" }}>
+          Plan: abonnement test 1 mois ($139), cartographier indicateurs, puis suivi autonome.
+        </div>
+        <div className="notes-header">
+          <span>Indicateur</span>
+          <span>Description</span>
+          <span>Utilité</span>
+          <span>Alternative gratuite</span>
+        </div>
+        {data.notesITC.map((row, i) => (
+          <div key={i} className="notes-row">
+            <span style={{ fontWeight: 600, color: "#e0e0e0" }}>{row.indicateur}</span>
+            <span style={{ color: "#888", fontSize: 13 }}>{row.description}</span>
+            <span style={{ color: "#888", fontSize: 13 }}>{row.utilite}</span>
+            <span style={{ color: "#00ff9d", fontSize: 13 }}>{row.alternative}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    // ============================================
+    // STYLES CSS
+    // ============================================
+
+    const styles = `
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      body {
+        min-height: 100vh;
+        background-color: #080808;
+        color: #c0c0c0;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        overflow-x: hidden;
+      }
+
+      .dashboard {
+        min-height: 100vh;
+        display: flex;
+        position: relative;
+      }
+
+      .sidebar {
+        width: 200px;
+        min-width: 200px;
+        min-height: 100vh;
+        background: #0a0a0a;
+        border-right: 1px solid #1a1a1a;
+        padding: 20px 0;
+        position: fixed;
+        left: 0;
+        top: 0;
+      }
+
+      .sidebar-header {
+        padding: 0 20px 20px 20px;
+        border-bottom: 1px solid #1a1a1a;
+        margin-bottom: 20px;
+      }
+
+      .main-content {
+        margin-left: 200px;
+        width: calc(100% - 200px);
+        max-width: calc(100vw - 200px);
+        padding: 20px;
+        padding-bottom: 60px;
+        overflow-x: hidden;
+        box-sizing: border-box;
+      }
+
+      .dashboard::before {
+        content: "";
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: repeating-linear-gradient(0deg, rgba(0,0,0,0.1) 0px, rgba(0,0,0,0.1) 1px, transparent 1px, transparent 2px);
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0.3;
+      }
+
+      .corner-box {
+        background: #0d0d0d;
+        border: 1px solid #1f1f1f;
+        position: relative;
+        max-width: 100%;
+        overflow: hidden;
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid #1a1a1a;
+        padding-bottom: 16px;
+        margin-bottom: 20px;
+      }
+
+      .tabs {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 0 12px;
+      }
+
+      .tab {
+        padding: 12px 16px;
+        background: transparent;
+        border: none;
+        border-left: 3px solid transparent;
+        color: #666;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: left;
+        font-family: inherit;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .tab:hover {
+        background: #111;
+        color: #888;
+      }
+
+      .tab.active {
+        background: #0d0d0d;
+        border-left-color: #00ff9d;
+        color: #00ff9d;
+      }
+
+      .static-banner {
+        width: 100%;
+        background: rgba(0, 50, 40, 0.5);
+        border-top: 1px solid #1a1a1a;
+        border-bottom: 1px solid #1a1a1a;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        box-sizing: border-box;
+      }
+
+      .scrolling-banner {
+        width: 100%;
+        overflow: hidden;
+        background: rgba(0, 50, 40, 0.5);
+        border-top: 1px solid #1a1a1a;
+        border-bottom: 1px solid #1a1a1a;
+        padding: 12px 0;
+        margin-bottom: 16px;
+        position: relative;
+      }
+
+      .scrolling-content {
+        display: inline-flex;
+        white-space: nowrap;
+        animation: scroll-left 30s linear infinite;
+        gap: 40px;
+      }
+
+      .scrolling-content-fast {
+        display: inline-flex;
+        white-space: nowrap;
+        animation: scroll-left 65s linear infinite;
+        gap: 40px;
+      }
+
+      .scrolling-banner:hover .scrolling-content,
+      .scrolling-banner:hover .scrolling-content-fast {
+        animation-play-state: paused;
+      }
+
+      @keyframes scroll-left {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(-50%);
+        }
+      }
+
+      .banner-item {
+        display: inline-block;
+        font-size: 13px;
+        padding: 0 16px;
+      }
+
+      .banner-summary {
+        font-size: 15px;
+        font-weight: 500;
+      }
+
+      .banner-alert {
+        color: #ff6b35;
+      }
+
+      .banner-summary {
+        color: #00ff9d;
+      }
+
+      .banner-separator {
+        color: #333;
+        font-size: 12px;
+      }
+
+      .three-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+        gap: 16px;
+      }
+
+      .macro-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      @media (max-width: 1200px) {
+        .three-cols {
+          grid-template-columns: 1fr;
+        }
+        .macro-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .col-box {
+        background: #0d0d0d;
+        border: 1px solid #1f1f1f;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .col-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid #1a1a1a;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 2px;
+        color: #888;
+      }
+
+      .sit-header-compact, .sit-row-compact {
+        display: grid;
+        grid-template-columns: 80px 22px 22px 22px 1fr;
+        padding: 10px 14px;
+        align-items: center;
+        gap: 6px;
+      }
+      .sit-header-compact {
+        font-size: 12px;
+        color: #666;
+        border-bottom: 1px solid #111;
+        text-transform: uppercase;
+      }
+      .sit-row-compact {
+        font-size: 13px;
+        border-bottom: 1px solid #0d0d0d;
+      }
+      .sit-row-compact:hover { background: #0d0d0d; }
+
+      .param-row-compact {
+        display: flex;
+        align-items: flex-start;
+        padding: 10px 16px;
+        border-bottom: 1px solid #0d0d0d;
+        gap: 10px;
+        min-width: 0;
+      }
+      .param-row-compact:hover { background: #0d0d0d; }
+
+      .tech-header-compact, .tech-row-compact {
+        display: grid;
+        grid-template-columns: 60px 1fr 1fr 1fr;
+        padding: 10px 16px;
+        align-items: center;
+        text-align: center;
+      }
+      .tech-header-compact {
+        font-size: 10px;
+        color: #555;
+        border-bottom: 1px solid #111;
+        text-transform: uppercase;
+      }
+      .tech-header-compact span:first-child,
+      .tech-row-compact span:first-child {
+        text-align: left;
+      }
+      .tech-row-compact {
+        font-size: 13px;
+        border-bottom: 1px solid #0d0d0d;
+      }
+      .tech-row-compact:hover { background: #0d0d0d; }
+
+      .section-header {
+        padding: 16px 20px;
+        border-bottom: 2px solid #1a1a1a;
+        font-weight: 600;
+        font-size: 14px;
+        letter-spacing: 2px;
+        color: #888;
+        text-transform: uppercase;
+      }
+
+      .cal-row-v2 {
+        display: flex;
+        padding: 16px 20px;
+        border-bottom: 1px solid #111;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      .cal-row-v2:hover { background: #111 !important; }
+      .cal-date {
+        min-width: 130px;
+        color: #888;
+        font-size: 14px;
+        font-weight: 500;
+      }
+      .cal-content { flex: 1; }
+      .cal-event { margin-bottom: 6px; }
+      .cal-signal { color: #888; font-size: 13px; }
+      .cal-notes { color: #555; font-size: 12px; margin-top: 4px; }
+
+      .generic-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 1px solid #111;
+        min-width: 0;
+      }
+      .generic-row:hover { background: #111; }
+
+      .actifs-header, .actifs-row {
+        display: grid;
+        grid-template-columns: 30px 70px 70px 90px 1fr 80px 1fr;
+        padding: 8px 16px;
+        align-items: center;
+        gap: 6px;
+      }
+      .actifs-header { font-size: 11px; font-weight: 600; color: #555; border-bottom: 1px solid #1a1a1a; text-transform: uppercase; }
+      .actifs-row { border-bottom: 1px solid #111; }
+      .actifs-row:hover { background: #111; }
+
+      .secteurs-header, .secteurs-row {
+        display: grid;
+        grid-template-columns: 120px 180px 1fr 120px 1fr;
+        padding: 8px 16px;
+        align-items: center;
+        gap: 10px;
+      }
+      .secteurs-header { font-size: 11px; font-weight: 600; color: #555; border-bottom: 1px solid #1a1a1a; text-transform: uppercase; }
+      .secteurs-row { border-bottom: 1px solid #111; }
+      .secteurs-row:hover { background: #111; }
+
+      .defi-header, .defi-row {
+        display: grid;
+        grid-template-columns: 180px 140px 100px 1fr;
+        padding: 12px 20px;
+        align-items: center;
+        gap: 12px;
+      }
+      .defi-header { font-size: 11px; font-weight: 600; color: #555; border-bottom: 1px solid #1a1a1a; text-transform: uppercase; }
+      .defi-row { padding: 14px 20px; border-bottom: 1px solid #111; }
+
+      .notes-header, .notes-row {
+        display: grid;
+        grid-template-columns: 160px 1fr 1fr 1fr;
+        padding: 12px 16px;
+        align-items: center;
+        gap: 10px;
+      }
+      .notes-header { font-size: 11px; font-weight: 600; color: #555; border-bottom: 1px solid #1a1a1a; text-transform: uppercase; }
+      .notes-row { padding: 14px 20px; border-bottom: 1px solid #111; }
+
+      .onchain-header, .onchain-row {
+        display: grid;
+        grid-template-columns: 140px 80px 120px 120px 1fr;
+        padding: 12px 20px;
+        align-items: center;
+        gap: 12px;
+      }
+      .onchain-header { font-size: 11px; font-weight: 600; color: #555; border-bottom: 1px solid #1a1a1a; text-transform: uppercase; }
+      .onchain-row { padding: 14px 20px; border-bottom: 1px solid #111; }
+      .onchain-row:hover { background: #111; }
+
+      @media (max-width: 900px) {
+        .three-cols {
+          grid-template-columns: 1fr 1fr;
+        }
+        .three-cols .col-box:nth-child(3) {
+          grid-column: span 2;
+        }
+      }
+
+      @media (max-width: 600px) {
+        .dashboard { padding: 12px; font-size: 12px; }
+        .header { flex-direction: column; align-items: flex-start; gap: 8px; }
+        .tabs { gap: 4px; }
+        .tab { padding: 8px 12px; font-size: 11px; }
+        .three-cols {
+          grid-template-columns: 1fr;
+        }
+        .three-cols .col-box:nth-child(3) {
+          grid-column: span 1;
+        }
+      }
+    `;
+
+    // ============================================
+    // COMPOSANT PRINCIPAL
+    // ============================================
+
+    function Dashboard() {
+      const [activeTab, setActiveTab] = useState("dashboard");
+
+      const tabs = [
+        { id: "dashboard", label: "Dashboard" },
+        { id: "calendrier", label: "Calendrier" },
+        { id: "macro", label: "Paramètres & Ratios" },
+        { id: "actifs", label: "Actifs" },
+        { id: "secteurs", label: "Secteurs" },
+        { id: "defi", label: "DeFi" },
+        { id: "onchain", label: "Actions & Métaux Onchain" },
+        { id: "notes", label: "Notes ITC" },
+      ];
+
+      const renderTab = () => {
+        switch (activeTab) {
+          case "dashboard": return <TabDashboard />;
+          case "calendrier": return <TabCalendrier />;
+          case "macro": return <TabMacro />;
+          case "actifs": return <TabActifs />;
+          case "secteurs": return <TabSecteurs />;
+          case "defi": return <TabDeFi />;
+          case "onchain": return <TabOnchain />;
+          case "notes": return <TabNotes />;
+          default: return <TabDashboard />;
+        }
+      };
+
+      return (
+        <>
+          <style>{styles}</style>
+          <div className="dashboard">
+            <div className="sidebar">
+              <div className="sidebar-header">
+                <span style={{ color: "#00ff9d", fontWeight: 700, fontSize: 18 }}>◆</span>
+                <span style={{ marginLeft: 10, fontWeight: 600, letterSpacing: 1, fontSize: 13 }}>
+                  ANALYSE MARCHÉS
+                </span>
+              </div>
+              <div className="tabs">
+                {tabs.map(tab => (
+                  <button
+                    key={tab.id}
+                    className={`tab ${activeTab === tab.id ? "active" : ""}`}
+                    onClick={() => setActiveTab(tab.id)}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ position: "absolute", bottom: 20, left: 20, color: "#444", fontSize: 11 }}>
+                MàJ: {data.lastUpdate}
+              </div>
+            </div>
+
+            <div className="main-content">
+              {renderTab()}
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    // ============================================
+    // RENDER
+    // ============================================
+
+    ReactDOM.render(<Dashboard />, document.getElementById('root'));
+  </script>
+</body>
+</html>

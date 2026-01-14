@@ -1,0 +1,3489 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Market Dashboard - X-Files</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='30' y='10' width='40' height='80' fill='%2300E0C0'/></svg>">
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ============================================
+    // API COINGECKO - Récupération des données crypto
+    // ============================================
+
+    const fetchMarketData = async () => {
+      try {
+        // CoinGecko API - gratuit, pas de clé, CORS supporté
+        const response = await fetch(
+          'https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=200&page=1'
+        );
+
+        if (!response.ok) throw new Error('CoinGecko API Error');
+        const coins = await response.json();
+        const marketData = {};
+
+        coins.forEach(coin => {
+          const symbol = coin.symbol.toUpperCase();
+
+          // Ne garder que le premier pour chaque symbole (le plus gros market cap)
+          if (!marketData[symbol]) {
+            marketData[symbol] = {
+              rank: coin.market_cap_rank,
+              price: coin.current_price || 0,
+              marketCap: coin.market_cap || 0,
+              change24h: coin.price_change_percentage_24h || 0
+            };
+          }
+        });
+
+        // Appliquer corrections CoinGecko (multiplier mcap, soustraire offset rang)
+        Object.entries(cgCorrections).forEach(([symbol, correction]) => {
+          if (marketData[symbol]) {
+            marketData[symbol].marketCap = marketData[symbol].marketCap * correction.mcapMultiplier;
+            marketData[symbol].rank = marketData[symbol].rank - correction.rankOffset;
+          }
+        });
+
+        return marketData;
+      } catch (error) {
+        console.error('Erreur fetch CoinGecko:', error);
+        return null;
+      }
+    };
+
+    // ============================================
+    // ============================================
+    // API CONFIGURATION - Clés stockées dans localStorage
+    // ============================================
+
+    const getApiKeys = () => ({
+      finnhub: localStorage.getItem('finnhub_api_key') || '',
+      goldapi: localStorage.getItem('goldapi_api_key') || ''
+    });
+
+    const setApiKeys = (finnhub, goldapi) => {
+      if (finnhub) localStorage.setItem('finnhub_api_key', finnhub);
+      if (goldapi) localStorage.setItem('goldapi_api_key', goldapi);
+    };
+
+    // Rangs statiques (companiesmarketcap.com - màj manuelle)
+    const staticRanks = {
+      "SPX": 0, "NASDAQ": 0,
+      "GOLD": 1, "NVDA": 2, "SILVER": 3, "GOOG": 4, "AAPL": 5,
+      "MSFT": 6, "AMZN": 7, "TSM": 9, "META": 10, "AVGO": 11,
+      "TSLA": 13, "PLAT": 26, "PALLAD": 50
+    };
+
+    // Corrections CoinGecko (données incorrectes - source: CoinMarketCap 13/01/2026)
+    // mcapMultiplier: facteur correctif pour le mcap (1.0 = pas de correction)
+    // rankOffset: valeur à soustraire du rang CG pour approcher le rang CMC
+    const cgCorrections = {
+      "XMR":   { mcapMultiplier: 1.0, rankOffset: 2 },   // CG 13 → CMC 11
+      "BCH":   { mcapMultiplier: 1.0, rankOffset: 3 },   // CG 15 → CMC 12
+      "LINK":  { mcapMultiplier: 1.0, rankOffset: 8 },   // CG 21 → CMC 13
+      "HYPE":  { mcapMultiplier: 1.42, rankOffset: 17 }, // CG 32 → CMC 15, mcap +42%
+      "AAVE":  { mcapMultiplier: 1.0, rankOffset: 16 },  // CG 51 → CMC 35
+      "ASTER": { mcapMultiplier: 1.0, rankOffset: 21 },  // CG 66 → CMC 45
+      "PUMP":  { mcapMultiplier: 0.60, rankOffset: 2 },  // CG 73 → CMC 71, mcap -40%
+      "KAS":   { mcapMultiplier: 1.0, rankOffset: 31 },  // CG 88 → CMC 57
+      "LIT":   { mcapMultiplier: 1.0, rankOffset: 59 }   // CG 150 → CMC 91
+    };
+
+    // Symboles pour Finnhub (actions)
+    const finnhubSymbols = ["NVDA", "GOOG", "AAPL", "MSFT", "AMZN", "TSM", "META", "AVGO", "TSLA"];
+
+    // Liste des symboles non-crypto (pour éviter conflit avec crypto)
+    const yahooSymbols = {
+      "GOLD": true, "SILVER": true, "PLAT": true, "PALLAD": true,
+      "SPX": true, "NASDAQ": true,
+      "NVDA": true, "GOOG": true, "AAPL": true, "MSFT": true,
+      "AMZN": true, "TSM": true, "META": true, "AVGO": true, "TSLA": true
+    };
+
+    // ============================================
+    // FINNHUB API - Actions US
+    // ============================================
+
+    const fetchFinnhubData = async () => {
+      const apiKey = getApiKeys().finnhub;
+      if (!apiKey) {
+        console.warn('Finnhub API key non configurée');
+        return null;
+      }
+
+      const data = {};
+
+      try {
+        // Fetch tous les symboles en parallèle
+        const promises = finnhubSymbols.map(async (symbol) => {
+          const response = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`);
+          if (!response.ok) throw new Error(`Finnhub error for ${symbol}`);
+          const quote = await response.json();
+          return { symbol, quote };
+        });
+
+        const results = await Promise.all(promises);
+
+        results.forEach(({ symbol, quote }) => {
+          if (quote && quote.c) {
+            data[symbol] = {
+              rank: staticRanks[symbol] || 999,
+              price: quote.c,
+              change24h: quote.pc ? ((quote.c - quote.pc) / quote.pc * 100) : 0
+            };
+          }
+        });
+
+        // Indices SPX et NASDAQ via ETF proxies
+        const [spyResponse, qqqResponse] = await Promise.all([
+          fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${apiKey}`),
+          fetch(`https://finnhub.io/api/v1/quote?symbol=QQQ&token=${apiKey}`)
+        ]);
+
+        const spyQuote = await spyResponse.json();
+        const qqqQuote = await qqqResponse.json();
+
+        if (spyQuote?.c) {
+          data["SPX"] = { rank: 0, price: Math.round(spyQuote.c * 10), change24h: 0 }; // SPY * 10 ≈ SPX
+        }
+        if (qqqQuote?.c) {
+          data["NASDAQ"] = { rank: 0, price: Math.round(qqqQuote.c * 43), change24h: 0 }; // QQQ * 43 ≈ NASDAQ
+        }
+
+        return data;
+      } catch (error) {
+        console.error('Erreur Finnhub:', error);
+        return null;
+      }
+    };
+
+    // ============================================
+    // GOLDAPI - Métaux précieux (avec cache 24h)
+    // ============================================
+
+    const goldapiSymbols = {
+      "GOLD": "XAU",
+      "SILVER": "XAG",
+      "PLAT": "XPT",
+      "PALLAD": "XPD"
+    };
+
+    const METALS_CACHE_KEY = 'metals_cache';
+    const METALS_CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 heures
+
+    const fetchMetalsData = async () => {
+      const apiKey = getApiKeys().goldapi;
+
+      // Vérifier le cache
+      const cached = localStorage.getItem(METALS_CACHE_KEY);
+      if (cached) {
+        const { data, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < METALS_CACHE_DURATION) {
+          console.log('Métaux: utilisation du cache (< 24h)');
+          return data;
+        }
+      }
+
+      if (!apiKey) {
+        console.warn('GoldAPI key non configurée');
+        return cached ? JSON.parse(cached).data : null;
+      }
+
+      const data = {};
+
+      try {
+        for (const [internal, apiSymbol] of Object.entries(goldapiSymbols)) {
+          const response = await fetch(`https://www.goldapi.io/api/${apiSymbol}/USD`, {
+            headers: { 'x-access-token': apiKey }
+          });
+
+          if (!response.ok) {
+            console.error(`GoldAPI error for ${internal}:`, response.status);
+            continue;
+          }
+
+          const quote = await response.json();
+
+          if (quote && quote.price) {
+            data[internal] = {
+              rank: staticRanks[internal] || 999,
+              price: quote.price,
+              change24h: quote.ch_percent || 0
+            };
+          }
+        }
+
+        // Sauvegarder en cache
+        if (Object.keys(data).length > 0) {
+          localStorage.setItem(METALS_CACHE_KEY, JSON.stringify({
+            data,
+            timestamp: Date.now()
+          }));
+        }
+
+        return data;
+      } catch (error) {
+        console.error('Erreur GoldAPI:', error);
+        return cached ? JSON.parse(cached).data : null;
+      }
+    };
+
+    // ============================================
+    // FETCH COMBINÉ - Actions + Métaux
+    // ============================================
+
+    const fetchYahooFinanceData = async () => {
+      // Fetch en parallèle Finnhub (actions) et Finnhub ETFs (métaux)
+      const [actionsData, metalsData] = await Promise.all([
+        fetchFinnhubData(),
+        fetchMetalsData()
+      ]);
+
+      // Combiner les résultats
+      return {
+        ...(actionsData || {}),
+        ...(metalsData || {})
+      };
+    };
+
+    // ============================================
+    // INDICATEURS TECHNIQUES - Historique & Calculs (Weekly)
+    // ============================================
+
+    // Fetch historique Yahoo Finance (weekly pour SMA 200/50)
+    const fetchYahooHistory = async (symbol, weeks = 250) => {
+      try {
+        const end = Math.floor(Date.now() / 1000);
+        const start = end - (weeks * 7 * 24 * 60 * 60);
+        const apiUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${start}&period2=${end}&interval=1wk`;
+        const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(apiUrl);
+
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error('Yahoo History API Error');
+
+        const result = await response.json();
+        const quotes = result.chart?.result?.[0];
+        if (!quotes) return null;
+
+        const closes = quotes.indicators?.quote?.[0]?.close || [];
+        const timestamps = quotes.timestamp || [];
+
+        // Filtrer les valeurs null et retourner les closes valides
+        return closes.filter(c => c !== null);
+      } catch (error) {
+        console.error(`Erreur fetch historique ${symbol}:`, error);
+        return null;
+      }
+    };
+
+    // Calcul SMA (Simple Moving Average)
+    const calculateSMA = (prices, period) => {
+      if (!prices || prices.length < period) return null;
+      const slice = prices.slice(-period);
+      return slice.reduce((sum, p) => sum + p, 0) / period;
+    };
+
+    // Calcul RSI (Relative Strength Index)
+    const calculateRSI = (prices, period = 14) => {
+      if (!prices || prices.length < period + 1) return null;
+
+      let gains = 0;
+      let losses = 0;
+
+      // Calculer gains/pertes sur la période initiale
+      for (let i = prices.length - period; i < prices.length; i++) {
+        const change = prices[i] - prices[i - 1];
+        if (change > 0) gains += change;
+        else losses -= change;
+      }
+
+      const avgGain = gains / period;
+      const avgLoss = losses / period;
+
+      if (avgLoss === 0) return 100;
+      const rs = avgGain / avgLoss;
+      return 100 - (100 / (1 + rs));
+    };
+
+    // Fetch et calcul des indicateurs pour un symbole
+    const fetchIndicators = async (symbol, yahooSymbol) => {
+      const history = await fetchYahooHistory(yahooSymbol, 250);
+      if (!history || history.length < 200) {
+        console.warn(`Pas assez de données historiques pour ${symbol}`);
+        return null;
+      }
+
+      const currentPrice = history[history.length - 1];
+      const sma200 = calculateSMA(history, 200);
+      const sma50 = calculateSMA(history, 50);
+      const rsi14 = calculateRSI(history, 14);
+
+      return {
+        price: currentPrice,
+        sma200,
+        sma50,
+        rsi14,
+        // "La 200W est à X% du prix" (négatif si SMA < prix)
+        sma200VsPrice: sma200 ? ((sma200 - currentPrice) / currentPrice) * 100 : null,
+        sma50VsPrice: sma50 ? ((sma50 - currentPrice) / currentPrice) * 100 : null,
+      };
+    };
+
+    // ============================================
+    // DONNÉES STATIQUES - Fallback si API échoue
+    // ============================================
+
+    const staticMarketData = {
+      // Commodités (rang global assets)
+      "GOLD": { rank: 1, price: 4518, marketCap: 31.416e12 },
+      "SILVER": { rank: 3, price: 79.79, marketCap: 4.491e12 },
+      "PLAT": { rank: 26, price: 2278, marketCap: 569.45e9 },
+      "PALLAD": { rank: 50, price: 1874, marketCap: 327.95e9 },
+
+      // Indices
+      "SPX": { rank: 0, price: 6966.29, marketCap: null },
+      "NASDAQ": { rank: 0, price: 25759, marketCap: null },
+
+      // Actions (rang global assets)
+      "NVDA": { rank: 2, price: 184.86, marketCap: 4.500e12 },
+      "GOOG": { rank: 4, price: 329.14, marketCap: 3.973e12 },
+      "AAPL": { rank: 5, price: 259.37, marketCap: 3.849e12 },
+      "MSFT": { rank: 6, price: 479.28, marketCap: 3.562e12 },
+      "AMZN": { rank: 7, price: 247.38, marketCap: 2.644e12 },
+      "TSM": { rank: 9, price: 323.63, marketCap: 1.678e12 },
+      "META": { rank: 10, price: 653.06, marketCap: 1.646e12 },
+      "AVGO": { rank: 11, price: 344.97, marketCap: 1.635e12 },
+      "TSLA": { rank: 13, price: 445.01, marketCap: 1.480e12 },
+    };
+
+    const formatPrice = (price) => {
+      if (!price) return '—';
+      if (price >= 1000) return '$' + price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+      if (price >= 1) return '$' + price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+      if (price >= 0.01) return '$' + price.toFixed(4);
+      return '$' + price.toFixed(6);
+    };
+
+    const formatMarketCap = (mcap) => {
+      if (!mcap) return '—';
+      if (mcap >= 1e12) return '$' + (mcap / 1e12).toFixed(2) + 'T';
+      if (mcap >= 1e9) return '$' + (mcap / 1e9).toFixed(2) + 'B';
+      if (mcap >= 1e6) return '$' + (mcap / 1e6).toFixed(2) + 'M';
+      return '$' + mcap.toLocaleString();
+    };
+
+    // Mapping des symboles (notre nom → symbole API)
+    const symbolMapping = {};
+
+    const getCmcSymbol = (symbol) => symbolMapping[symbol] || symbol;
+
+    // Mapping des mois (FR/EN) - utilisé pour parser les dates
+    const MONTHS = { "Jan": 0, "Fév": 1, "Feb": 1, "Mar": 2, "Avr": 3, "Apr": 3, "Mai": 4, "May": 4, "Jun": 5, "Juin": 5, "Jul": 6, "Juil": 6, "Aug": 7, "Aoû": 7, "Août": 7, "Sep": 8, "Oct": 9, "Nov": 10, "Déc": 11, "Dec": 11 };
+
+    // ============================================
+    // DONNÉES PARTAGÉES - SOURCE UNIQUE
+    // Modifier ici = modification automatique partout
+    // ============================================
+
+    const sharedParams = {
+      // ============================================
+      // ACTIFS - Apparaissent dans Dashboard, Actifs, etc.
+      // ============================================
+      "BTC": {
+        status: "bearish",
+        signal: "Fin cycle, 100k possible CT, LT ~60k",
+        m: "bearish", h: "neutre", j: "neutre",
+        ticker: "BTCUSD", type: "Crypto", secteur: "POW L1",
+        category: "actif", importance: "haute"
+      },
+      "ETH": {
+        status: "bearish",
+        signal: "Suit BTC, support ~2k",
+        m: "bearish", h: "neutre", j: "neutre",
+        ticker: "ETHUSD", type: "Crypto", secteur: "POS L1",
+        category: "actif", importance: "haute"
+      },
+
+      // ============================================
+      // MACRO - Paramètres macro-économiques
+      // ============================================
+      "WALCL": { status: "bullish", signal: "QT terminé, stealth QE = légèrement bullish", ticker: "FRED:WALCL", category: "macro", importance: "haute" },
+      "DXY": { status: "neutre", signal: "?", ticker: "TVC:DXY", category: "macro", importance: "moyenne" },
+      "SPX": { status: "neutre", signal: "Bull structurel mais SPX/GOLD bearish", ticker: "SP:SPX", category: "macro", importance: "moyenne" },
+      "NASDAQ": { status: "neutre", signal: "Bull structurel mais SPX/GOLD bearish", ticker: "NASDAQ:NDX", category: "macro", importance: "basse" },
+      "SPY/RSP": { status: "neutre", signal: "Top 10 = 40% du S&P, tendance bullish mais niveaux premium", ticker: "SPY/RSP", category: "macro", importance: "basse" },
+      "EUR/USD": { status: "neutre", signal: "Proche résistance, RSI haut, possible bullflag", ticker: "FX:EURUSD", category: "macro", importance: "basse" },
+      "US10Y": { status: "neutre", signal: "Rechercher", ticker: "TVC:US10Y", category: "macro", importance: "moyenne" },
+      "US2Y": { status: "neutre", signal: "Rechercher", ticker: "TVC:US02Y", category: "macro", importance: "basse" },
+      "M2": { status: "neutre", signal: "Rechercher", ticker: "FRED:M2SL", category: "macro", importance: "moyenne" },
+      "RRP": { status: "neutre", signal: "Rechercher", ticker: "FRED:RRPONTSYD", category: "macro", importance: "moyenne" },
+
+      // ============================================
+      // RATIOS - Ratios entre actifs
+      // ============================================
+      "GOLD/SPX": { status: "bullish", signal: "Cup & handle D/W, résistance ou poussée puis fin bullrun métaux", ticker: "GOLDUSD/SPX", category: "ratio", importance: "moyenne" },
+      "BTC/GOLD": { status: "bearish", signal: "Distribution confirmée. Supports 16 13 9", ticker: "BTCUSD/GOLDUSD", category: "ratio", importance: "moyenne" },
+      "BTC/SPX": { status: "neutre", signal: "Si bearish supports 1000 900 740", ticker: "BTCUSD/SPX", category: "ratio", importance: "moyenne" },
+      "ETH/BTC": { status: "bearish", signal: "Structure baissière, pas de catalyseur ETH", ticker: "ETHBTC", category: "ratio", importance: "haute" },
+      "HYPE/BTC": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/BTCUSD", category: "ratio", importance: "moyenne" },
+      "HYPE/ETH": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/ETHUSD", category: "ratio", importance: "moyenne" },
+      "HYPE/SOL": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/SOLUSD", category: "ratio", importance: "moyenne" },
+
+      // ============================================
+      // FLUX CRYPTO - Dominance et flux
+      // ============================================
+      "STABLES.D": { status: "bullish", signal: "Structure haussière, pullback possible CT", ticker: "(CRYPTOCAP:USDT+CRYPTOCAP:USDC)/CRYPTOCAP:TOTAL", category: "flux", importance: "haute" },
+      "BTC.D": { status: "neutre", signal: "Dominance élevée, baisse possible même si BTC baisse", ticker: "CRYPTOCAP:BTC.D", category: "flux", importance: "haute" },
+      "ALTS/BTC": { status: "neutre", signal: "Bas mais ne rentrer sur alts que sur dips de ce ratio", ticker: "(CRYPTOCAP:TOTAL3-CRYPTOCAP:USDT)/CRYPTOCAP:BTC*100", category: "flux", importance: "haute" },
+      "BTC ETF": { status: "neutre", signal: "Rechercher", ticker: "", category: "flux", importance: "moyenne" },
+      "ETH ETF": { status: "neutre", signal: "Rechercher", ticker: "", category: "flux", importance: "moyenne" },
+      "SOL ETF": { status: "neutre", signal: "À suivre si ETF approuvé", ticker: "", category: "flux", importance: "basse" },
+
+      // ============================================
+      // SENTIMENT - Indicateurs de sentiment
+      // ============================================
+      "SOCIAL RISK": { status: "neutre", signal: "Proche 0 = désintérêt, personne pour pump", ticker: "", category: "sentiment", importance: "moyenne" },
+    };
+
+    // Fonction helper pour récupérer un paramètre partagé
+    const getParam = (name) => sharedParams[name] || { status: "neutre", signal: "À vérifier" };
+
+    // ============================================
+    // LOGOS DES ACTIFS
+    // ============================================
+
+    const assetLogos = {
+      // Cryptos - via CoinMarketCap
+      "BTC": "https://s2.coinmarketcap.com/static/img/coins/64x64/1.png",
+      "ETH": "https://s2.coinmarketcap.com/static/img/coins/64x64/1027.png",
+      "SOL": "https://s2.coinmarketcap.com/static/img/coins/64x64/5426.png",
+      "LINK": "https://s2.coinmarketcap.com/static/img/coins/64x64/1975.png",
+      "XMR": "https://s2.coinmarketcap.com/static/img/coins/64x64/328.png",
+      "AAVE": "https://s2.coinmarketcap.com/static/img/coins/64x64/7278.png",
+      "KAS": "https://s2.coinmarketcap.com/static/img/coins/64x64/20396.png",
+      "HYPE": "https://s2.coinmarketcap.com/static/img/coins/64x64/32196.png",
+      "LIT": "https://s2.coinmarketcap.com/static/img/coins/64x64/39125.png",
+      "PUMP": "https://s2.coinmarketcap.com/static/img/coins/64x64/36507.png",
+      "ASTER": "https://s2.coinmarketcap.com/static/img/coins/64x64/36341.png",
+      "BCH": "https://s2.coinmarketcap.com/static/img/coins/64x64/1831.png",
+      "DOGE": "https://s2.coinmarketcap.com/static/img/coins/64x64/74.png",
+
+      // Actions - via companiesmarketcap.com
+      "NVDA": "https://companiesmarketcap.com/img/company-logos/64/NVDA.png",
+      "AAPL": "https://companiesmarketcap.com/img/company-logos/64/AAPL.png",
+      "AMZN": "https://companiesmarketcap.com/img/company-logos/64/AMZN.png",
+      "GOOG": "https://companiesmarketcap.com/img/company-logos/64/GOOG.png",
+      "MSFT": "https://companiesmarketcap.com/img/company-logos/64/MSFT.png",
+      "META": "https://companiesmarketcap.com/img/company-logos/64/META.png",
+      "TSM": "https://companiesmarketcap.com/img/company-logos/64/TSM.png",
+      "AVGO": "https://companiesmarketcap.com/img/company-logos/64/AVGO.png",
+      "TSLA": "https://companiesmarketcap.com/img/company-logos/64/TSLA.png",
+
+      // Commodités - via companiesmarketcap.com
+      "GOLD": "https://companiesmarketcap.com/img/company-logos/64/GOLD.XM.png",
+      "SILVER": "https://companiesmarketcap.com/img/company-logos/64/SILVER.XM.png",
+      "PLAT": "https://companiesmarketcap.com/img/company-logos/64/PLAT.XM.png",
+      "PALLAD": "https://companiesmarketcap.com/img/company-logos/64/PALLAD.XM.png",
+    };
+
+    const getAssetLogo = (symbol) => assetLogos[symbol] || null;
+
+    // ============================================
+    // DONNÉES - Modifier ici pour mettre à jour
+    // ============================================
+
+    const data = {
+      lastUpdate: "13/01/2026 16:00",
+      globalSentiment: "bullish",
+      summary: "POSITION: GOLD | Métaux momentum (surachat M), GOLD/SPX Cup n Handle D & W | XMR breakout, BCH observer, STABLES.D haussier, BTC bear market retest 100K CT possible",
+
+      recentEvents: "Core CPI Jan 2.6% (< 2.7% attendu) | Rate cuts en pause, 2 prévues 2026 (attention chgt FED Chair) | Fin QT + stealth QE | Risques géo: Iran, Groenland, LatAm",
+
+      proverbs: [
+        "En bear, n'achète jamais du vert",
+        "En bull, ne vends jamais du rouge",
+        "Patience > FOMO",
+        "Social risk à 0 ≠ sans risque",
+        "Préserve ta situation",
+      ],
+
+      situation: [
+        { secteur: "Métaux", m: "neutre", h: "bullish", j: "bullish", action: "Bull mais surachat extrême M. GOLD rachat 4300-4350 D" },
+        { secteur: "Actions US", m: "neutre", h: "neutre", j: "neutre", action: "Bull structurel mais SPX/GOLD bearish" },
+        { secteur: "BTC", m: getParam("BTC").m, h: getParam("BTC").h, j: getParam("BTC").j, action: getParam("BTC").signal },
+        { secteur: "ETH", m: getParam("ETH").m, h: getParam("ETH").h, j: getParam("ETH").j, action: getParam("ETH").signal },
+        { secteur: "Altcoins", m: "neutre", h: "neutre", j: "neutre", action: "Attractifs mais BTC bear + social risk ~0. Timer via ratios. Exception XMR et BCH" },
+      ],
+
+      // Vue globale du Dashboard - utilise les paramètres partagés
+      vueGlobale: [
+        { param: "WALCL", ...getParam("WALCL") },
+        { param: "GOLD/SPX", ...getParam("GOLD/SPX") },
+        { param: "BTC/GOLD", ...getParam("BTC/GOLD") },
+        { param: "BTC/SPX", ...getParam("BTC/SPX") },
+        { param: "STABLES.D", ...getParam("STABLES.D") },
+        { param: "BTC.D", ...getParam("BTC.D") },
+        { param: "ETH/BTC", ...getParam("ETH/BTC") },
+        { param: "ALTS/BTC", ...getParam("ALTS/BTC") },
+        { param: "SOCIAL RISK", ...getParam("SOCIAL RISK") },
+      ],
+
+      calendrier: [
+        { date: "6 Jan 2026", event: "MSCI Décision", type: "Indices", status: "bullish", signal: "✓ Entreprises crypto gardées (temporaire)", notes: "MSTR, Metaplanet restent - consultation plus large à venir" },
+        { date: "2026", event: "MSCI Consultation", type: "Indices", status: "neutre", signal: "Revue traitement 'non-operating companies'", notes: "Pourrait affecter entreprises BTC treasury, date TBD" },
+        { date: "15 Jan 2026", event: "Clarity Act Markup", type: "Crypto", status: "bullish", signal: "Senate Banking Committee markup", notes: "Définit securities vs commodities - BTC/ETH = commodities, PoW non affecté" },
+        { date: "Jan-Fév 2026", event: "SCOTUS Tarifs", type: "Supreme Court", status: "neutre", signal: "Décision imminente sur IEEPA", notes: "Peut invalider tarifs Trump, $100B+ refunds" },
+        { date: "Jan 2026", event: "Nomination Fed Chair", type: "Fed", status: "neutre", signal: "Warsh vs Hassett ('Two Kevins')", notes: "Annonce attendue début 2026" },
+        { date: "13 Jan 2026", event: "CPI Décembre", type: "Inflation", status: "bullish", signal: "✓ Core 2.6% < 2.7% attendu", notes: "Rate cuts en pause, 2 prévues 2026" },
+        { date: "16 Jan 2026", event: "Rapport Section 232", type: "Commerce", status: "", signal: "Heavy trucks/buses", notes: "Potentiels nouveaux tarifs" },
+        { date: "27-28 Jan 2026", event: "FOMC", type: "Fed", status: "neutre", signal: "Pause attendue", notes: "2 cuts prévus 2026" },
+        { date: "12 Fév 2026", event: "CPI Janvier", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "20 Fév 2026", event: "GDP Q4 2025", type: "GDP", status: "", signal: "Advance estimate", notes: "8:30 AM ET" },
+        { date: "6 Fév 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données janvier", notes: "8:30 AM ET" },
+        { date: "6 Mar 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données février", notes: "8:30 AM ET" },
+        { date: "12 Mar 2026", event: "CPI Février", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "12 Mar 2026", event: "Tarifs Pâtes", type: "Commerce", status: "", signal: "Décision finale", notes: "Tarifs imports pâtes italiennes" },
+        { date: "17-18 Mar 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "3 Avr 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données mars", notes: "8:30 AM ET" },
+        { date: "10 Avr 2026", event: "CPI Mars", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "28-29 Avr 2026", event: "FOMC", type: "Fed", status: "", signal: "", notes: "" },
+        { date: "30 Avr 2026", event: "GDP Q1 2026", type: "GDP", status: "", signal: "Advance estimate", notes: "8:30 AM ET" },
+        { date: "1 Mai 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données avril", notes: "8:30 AM ET" },
+        { date: "13 Mai 2026", event: "CPI Avril", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "15 Mai 2026", event: "BCH Layla Hard Fork", type: "Crypto", status: "bullish", signal: "CashVM complet, quantum resistance, DeFi", notes: "Loops, Functions, Bitwise, P2S - lock-in Nov 2025" },
+        { date: "15 Mai 2026", event: "Fin mandat Powell", type: "Fed", status: "", signal: "Nouveau Fed Chair", notes: "Transition leadership Fed" },
+        { date: "5 Juin 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données mai", notes: "8:30 AM ET" },
+        { date: "11 Juin 2026", event: "CPI Mai", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "16-17 Juin 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "3 Juil 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données juin", notes: "8:30 AM ET" },
+        { date: "15 Juil 2026", event: "CPI Juin", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "28-29 Juil 2026", event: "FOMC", type: "Fed", status: "", signal: "", notes: "" },
+        { date: "30 Juil 2026", event: "GDP Q2 2026", type: "GDP", status: "", signal: "Advance estimate", notes: "8:30 AM ET" },
+        { date: "7 Août 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données juillet", notes: "8:30 AM ET" },
+        { date: "12 Août 2026", event: "CPI Juillet", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "4 Sep 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données août", notes: "8:30 AM ET" },
+        { date: "10 Sep 2026", event: "CPI Août", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "15-16 Sep 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "2 Oct 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données septembre", notes: "8:30 AM ET" },
+        { date: "15 Oct 2026", event: "CPI Septembre", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "27-28 Oct 2026", event: "FOMC", type: "Fed", status: "", signal: "", notes: "" },
+        { date: "29 Oct 2026", event: "GDP Q3 2026", type: "GDP", status: "", signal: "Advance estimate", notes: "8:30 AM ET" },
+        { date: "6 Nov 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données octobre", notes: "8:30 AM ET" },
+        { date: "12 Nov 2026", event: "CPI Octobre", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "4 Déc 2026", event: "NFP + Unemployment", type: "Emploi", status: "", signal: "Données novembre", notes: "8:30 AM ET" },
+        { date: "10 Déc 2026", event: "CPI Novembre", type: "Inflation", status: "", signal: "", notes: "8:30 AM ET" },
+        { date: "8-9 Déc 2026", event: "FOMC + SEP", type: "Fed", status: "", signal: "", notes: "Summary of Economic Projections" },
+        { date: "2026 (TBD)", event: "ETH Glamsterdam", type: "Crypto", status: "", signal: "Upgrade Ethereum", notes: "Après Fusaka (Dec 2025)" },
+        { date: "Fin 2026 (TBD)", event: "ETH Hegota", type: "Crypto", status: "", signal: "Verkle Trees, state expiry", notes: "Focus sur state bloat" },
+      ],
+
+      // Macro & Liquidité - utilise les paramètres partagés
+      macroLiquidite: [
+        { param: "WALCL", ...getParam("WALCL"), notes: "FED Balance Sheet" },
+        { param: "US10Y", ...getParam("US10Y"), notes: "Taux 10 ans US" },
+        { param: "US2Y", ...getParam("US2Y"), notes: "Taux 2 ans US (spread 2Y-10Y)" },
+        { param: "M2", ...getParam("M2"), notes: "Masse monétaire" },
+        { param: "RRP", ...getParam("RRP"), notes: "Reverse Repo Facility" },
+        { param: "DXY", ...getParam("DXY"), notes: "-9% sur 12 mois" },
+        { param: "SPY/RSP", ...getParam("SPY/RSP"), notes: "Concentration record" },
+        { param: "EUR/USD", ...getParam("EUR/USD"), notes: "" },
+      ],
+
+      // Flux Crypto - utilise les paramètres partagés
+      fluxCrypto: [
+        { param: "STABLES.D", ...getParam("STABLES.D"), notes: "Cash en attente vs déployé" },
+        { param: "BTC.D", ...getParam("BTC.D"), notes: "Pas d'alt season" },
+        { param: "BTC ETF", ...getParam("BTC ETF"), notes: "farside.co.uk" },
+        { param: "ETH ETF", ...getParam("ETH ETF"), notes: "farside.co.uk" },
+        { param: "SOL ETF", ...getParam("SOL ETF"), notes: "Pas encore approuvé" },
+      ],
+
+      // Ratios - utilise les paramètres partagés
+      ratios: [
+        { param: "GOLD/SPX", ...getParam("GOLD/SPX"), notes: "Risk-on vs risk-off" },
+        { param: "BTC/GOLD", ...getParam("BTC/GOLD"), notes: "Digital gold thesis" },
+        { param: "BTC/SPX", ...getParam("BTC/SPX"), notes: "Crypto vs equity" },
+        { param: "ETH/BTC", ...getParam("ETH/BTC"), notes: "Ratio bas historique ~0.035" },
+        { param: "ALTS/BTC", ...getParam("ALTS/BTC"), notes: "Alts hors ETH vs BTC" },
+        { param: "HYPE/BTC", ...getParam("HYPE/BTC"), notes: "HYPE vs BTC" },
+        { param: "HYPE/ETH", ...getParam("HYPE/ETH"), notes: "HYPE vs ETH" },
+        { param: "HYPE/SOL", ...getParam("HYPE/SOL"), notes: "HYPE vs SOL" },
+      ],
+
+      sentiment: [
+        { param: "SOCIAL RISK", ...getParam("SOCIAL RISK"), source: "Script jacdr", link: "", notes: "Proxy Social Risk (gratuit)" },
+        { param: "LIQUIDATION MAP", status: "neutre", signal: "À vérifier", source: "Regarder sur Coinglass", link: "coinglass.com/LiquidationData", notes: "Zones de liquidations" },
+      ],
+
+      actifs: [
+        // Commodités
+        { actif: "GOLD", type: "Commodity", secteur: "Métaux", status: "bullish", signal: "Bull, surachat extrême M", cible: "$4300-50", ticker: "GOLDUSD", notes: "" },
+        { actif: "SILVER", type: "Commodity", secteur: "Métaux", status: "bullish", signal: "Bull, surachat extrême M", cible: "BitPanda", ticker: "SILVERUSD", notes: "" },
+        { actif: "PLAT", type: "Commodity", secteur: "Métaux", status: "bullish", signal: "Bull, surachat extrême M", cible: "BitPanda", ticker: "PLATUSD", notes: "" },
+        { actif: "PALLAD", type: "Commodity", secteur: "Métaux", status: "bullish", signal: "Bull, surachat extrême M", cible: "BitPanda", ticker: "PALLADUSD", notes: "" },
+        // Actions
+        { actif: "SPX", type: "Action", secteur: "Indice", status: getParam("SPX").status, signal: getParam("SPX").signal, cible: "", ticker: "^GSPC", notes: "S&P 500" },
+        { actif: "NASDAQ", type: "Action", secteur: "Indice", status: getParam("NASDAQ").status, signal: getParam("NASDAQ").signal, cible: "", ticker: "^IXIC", notes: "Nasdaq Composite" },
+        { actif: "NVDA", type: "Action", secteur: "AI", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "NVDA", notes: "Nvidia" },
+        { actif: "GOOG", type: "Action", secteur: "Tech", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "GOOG", notes: "Alphabet" },
+        { actif: "AAPL", type: "Action", secteur: "Tech", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "AAPL", notes: "Apple" },
+        { actif: "MSFT", type: "Action", secteur: "Tech", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "MSFT", notes: "Microsoft" },
+        { actif: "AMZN", type: "Action", secteur: "Commerce", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "AMZN", notes: "Amazon" },
+        { actif: "TSM", type: "Action", secteur: "Semi", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "TSM", notes: "TSMC" },
+        { actif: "META", type: "Action", secteur: "AI", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "META", notes: "Meta" },
+        { actif: "AVGO", type: "Action", secteur: "Semi", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "AVGO", notes: "Broadcom" },
+        { actif: "TSLA", type: "Action", secteur: "Robotics", status: "neutre", signal: "Bull, nvx premium", cible: "BitPanda", ticker: "TSLA", notes: "Tesla" },
+        { actif: "BTC", type: getParam("BTC").type, secteur: getParam("BTC").secteur, status: getParam("BTC").status, signal: getParam("BTC").signal, cible: "$74,000", ticker: getParam("BTC").ticker, notes: "" },
+        { actif: "ETH", type: getParam("ETH").type, secteur: getParam("ETH").secteur, status: getParam("ETH").status, signal: getParam("ETH").signal, cible: "$2,000", ticker: getParam("ETH").ticker, notes: "" },
+        { actif: "SOL", type: "Crypto", secteur: "POS L1", status: "bearish", signal: "Bulltards absorbed", cible: "$80", ticker: "SOLUSD", notes: "" },
+        { actif: "LINK", type: "Crypto", secteur: "RWA", status: "bearish", signal: "Sur support, problème revenus", cible: "$7.8", ticker: "LINKUSD", notes: "Chainlink" },
+        { actif: "XMR", type: "Crypto", secteur: "Privacy", status: "bullish", signal: "OG Privacy, proche ATH, fractal SILVER", cible: "$450-460", ticker: "XMRUSD", notes: "Monero" },
+        { actif: "HYPE", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Pas encore, BTC/ETH/SOL", cible: "Ratios", ticker: "HYPEUSD", notes: "Hyperliquid" },
+        { actif: "AAVE", type: "Crypto", secteur: "DeFi", status: "bearish", signal: "Sur support, problème revenus", cible: "$75", ticker: "AAVEUSD", notes: "" },
+        { actif: "ASTER", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Niveaux intéressants mais situation crypto", cible: "HYPE", ticker: "ASTERUSD", notes: "asterdex.com" },
+        { actif: "PUMP", type: "Crypto", secteur: "Memes", status: "bearish", signal: "Niveaux intéressants, revenus", cible: "$0.0015", ticker: "PUMPUSD", notes: "pump.fun" },
+        { actif: "KAS", type: "Crypto", secteur: "POW L1", status: "bearish", signal: "Désintérêt, tente quelque chose en D, un jour re-IN", cible: "$0.032", ticker: "KASUSD", notes: "Kaspa" },
+        { actif: "LIT", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Niveaux intéressants mais situation crypto", cible: "HYPE", ticker: "LITUSD", notes: "Lighter" },
+        { actif: "BCH", type: "Crypto", secteur: "POW L1", status: "bullish", signal: "Log M breakout et retest", cible: "$630-640", ticker: "BCHUSD", notes: "Bitcoin Cash" },
+        { actif: "DOGE", type: "Crypto", secteur: "POW Meme", status: "neutre", signal: "OG meme, fair launch, observer", cible: "À définir", ticker: "DOGEUSD", notes: "Dogecoin" },
+      ],
+
+      defi: [
+        { metric: "OI Hyperliquid", status: "", signal: "", source: "Hyperliquid", link: "app.hyperliquid.xyz", notes: "" },
+        { metric: "OI Lighter", status: "", signal: "", source: "Lighter", link: "", notes: "" },
+        { metric: "OI Aster", status: "", signal: "", source: "Aster", link: "", notes: "" },
+        { metric: "Revenus apps", status: "", signal: "", source: "DefiLlama", link: "defillama.com/fees", notes: "" },
+        { metric: "Market share HL", status: "", signal: "", source: "DefiLlama", link: "defillama.com/protocol/hyperliquid", notes: "vs marché perps" },
+        { metric: "TVL Total", status: "", signal: "", source: "DefiLlama", link: "defillama.com", notes: "" },
+      ],
+
+      secteurs: [
+        { secteur: "AI", description: "Intelligence artificielle", actions: "NVDA, GOOG, MSFT, META", etfs: "À rechercher", notes: "" },
+        { secteur: "Robotique", description: "Robots industriels & humanoïdes", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Espace", description: "Exploration spatiale & satellites", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Militaire/Défense", description: "Armement & défense", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Génétique/Biotech", description: "Biotechnologies & édition génétique", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Énergie Nucléaire", description: "Nucléaire & uranium", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+        { secteur: "Quantique", description: "Informatique quantique", actions: "À rechercher", etfs: "À rechercher", notes: "" },
+      ],
+
+      onchain: [
+        { platform: "Hyperliquid", type: "DEX", metaux: "GOLDT (spot)", actions: "Perps", notes: "app.hyperliquid.xyz" },
+        { platform: "Lighter", type: "DEX", metaux: "—", actions: "Perps", notes: "lighter.xyz" },
+        { platform: "Aster", type: "DEX", metaux: "—", actions: "Perps", notes: "asterdex.com" },
+        { platform: "Vest", type: "DEX", metaux: "—", actions: "Perps", notes: "vest.exchange" },
+        { platform: "MEXC", type: "CEX", metaux: "GOLDT (spot)", actions: "—", notes: "mexc.com" },
+        { platform: "Truc Solana", type: "DEX", metaux: "?", actions: "?", notes: "À vérifier" },
+      ],
+
+      notesITC: [
+        { indicateur: "Social Risk", description: "Mesure intérêt retail (YT, Twitter)", utilite: "Identifier tops de cycle", alternative: "Simplified Risk Metric" },
+        { indicateur: "Bitcoin Risk Metric", description: "Niveau de risque BTC 0-1", utilite: "Zones accumulation/distribution", alternative: "Simplified Risk Metric" },
+        { indicateur: "Logarithmic Regression", description: "Bandes de régression log", utilite: "Fair value BTC/ETH", alternative: "Gratuit sur ITC" },
+        { indicateur: "DCA Simulator", description: "Simulation DCA", utilite: "Backtesting stratégies", alternative: "" },
+      ],
+
+      // Trading - Prix individuels et Ratios avec cibles multiples (3 IN, 3 OUT) + invalidation
+      tradingPrix: [
+        { actif: "BTC", targetIn: [74000, 60000, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "ETH", targetIn: [2000, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "SOL", targetIn: [80, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "XMR", targetIn: [450, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "BCH", targetIn: [550, 480, 450], targetOut: [1800, 2800, 4000], invalidation: 450 },
+        { actif: "HYPE", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "AAVE", targetIn: [75, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "LINK", targetIn: [7.8, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "KAS", targetIn: [0.032, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "PUMP", targetIn: [0.0015, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "LIT", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "ASTER", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "DOGE", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "GOLD", targetIn: [4300, null, null], targetOut: [null, null, null], invalidation: null },
+      ],
+
+      tradingRatios: [
+        // Macro
+        { ratio: "GOLD/SPX", numerator: "GOLD", denominator: "SPX", targetIn: [null, null, null], targetOut: [0.8, 0.95, 1.6], invalidation: null },
+        { ratio: "STABLES.D", type: "dominance", numerator: ["USDT", "USDC"], targetIn: [null, null, null], targetOut: [11, 15, 17], invalidation: null },
+        // BTC relatif
+        { ratio: "BTC/GOLD", numerator: "BTC", denominator: "GOLD", targetIn: [16, 13, 9], targetOut: [null, null, null], invalidation: null },
+        { ratio: "BTC/SPX", numerator: "BTC", denominator: "SPX", multiplier: 100, targetIn: [1000, 900, 740], targetOut: [null, null, null], invalidation: null },
+        { ratio: "BTC.D", type: "dominance", numerator: "BTC", targetIn: [null, null, null], targetOut: [72, null, null], invalidation: null },
+        // Alts
+        { ratio: "ETH/BTC", numerator: "ETH", denominator: "BTC", targetIn: [0.026, 0.024, 0.017], targetOut: [null, null, null], invalidation: null },
+        { ratio: "ALTS/BTC", type: "alts", targetIn: [26, null, null], targetOut: [44.75, null, null], invalidation: null },
+        // HYPE
+        { ratio: "HYPE/BTC", numerator: "HYPE", denominator: "BTC", multiplier: 10000, targetIn: [2.65, 2, 1.5], targetOut: [null, null, null], invalidation: null },
+        { ratio: "HYPE/ETH", numerator: "HYPE", denominator: "ETH", multiplier: 1000, targetIn: [6.34, null, null], targetOut: [null, null, null], invalidation: null },
+        { ratio: "HYPE/SOL", numerator: "HYPE", denominator: "SOL", multiplier: 10, targetIn: [1.5, 1.25, 1], targetOut: [null, null, null], invalidation: null },
+      ],
+    };
+
+    // ============================================
+    // FONCTIONS UTILITAIRES
+    // ============================================
+
+    const statusColor = (s) => {
+      if (!s || s === "—" || s === "") return "#3a3a3a";
+      if (s === "bullish") return "#40F0D0";
+      if (s === "bearish") return "#ff6b35";
+      return "#666";
+    };
+
+    // Actifs OG/Cypherpunk - marqués avec †
+    const OG_ASSETS = new Set(["BTC", "BCH", "XMR", "KAS", "DOGE"]);
+    const formatAssetName = (name) => OG_ASSETS.has(name) ? `${name} †` : name;
+
+    // Highlight certains tickers en vert dans un texte
+    const highlightTickers = (text, tickers = ["XMR", "BCH"]) => {
+      const parts = text.split(new RegExp(`(${tickers.join("|")})`, "g"));
+      return parts.map((part, i) =>
+        tickers.includes(part)
+          ? <span key={i} style={{ color: "#40F0D0", fontWeight: 600 }}>{part}</span>
+          : part
+      );
+    };
+
+    // Helper de surlignage selon le status (bullish/bearish)
+    const getMacroHighlight = (status) => {
+      if (status === "bullish") return { background: "rgba(64, 240, 208, 0.08)", borderLeft: "2px solid #40F0D0" };
+      if (status === "bearish") return { background: "rgba(255, 107, 53, 0.08)", borderLeft: "2px solid #ff6b35" };
+      return {};
+    };
+
+    const getActionColor = (m, h, j) => {
+      const statuses = [m, h, j].filter(s => s && s !== "—");
+      if (statuses.length === 0) return "#666";
+      const hasBullish = statuses.some(s => s.includes("bullish"));
+      const hasBearish = statuses.some(s => s.includes("bearish"));
+      if (hasBullish && hasBearish) return "#888";
+      if (hasBullish) return "#40F0D0";
+      if (hasBearish) return "#ff6b35";
+      return "#666";
+    };
+
+    // Helper de surlignage pour situation (3 timeframes)
+    const getSituationHighlight = (m, h, j) => {
+      const statuses = [m, h, j].filter(s => s && s !== "—");
+      if (statuses.length === 0) return {};
+      const hasBullish = statuses.some(s => s.includes("bullish"));
+      const hasBearish = statuses.some(s => s.includes("bearish"));
+      if (hasBullish && !hasBearish) return { background: "rgba(64, 240, 208, 0.08)", borderLeft: "2px solid #40F0D0" };
+      if (hasBearish && !hasBullish) return { background: "rgba(255, 107, 53, 0.08)", borderLeft: "2px solid #ff6b35" };
+      return {};
+    };
+
+    // ============================================
+    // COMPOSANTS
+    // ============================================
+
+    const StatusBadge = ({ status }) => {
+      const color = statusColor(status);
+      const label = !status || status === "—" || status === "" ? "—" : status.toUpperCase().slice(0, 4);
+      const isNeutral = !status || status === "neutre" || status === "—" || status === "";
+      return (
+        <span style={{
+          color,
+          backgroundColor: isNeutral ? "#1a1a1a" : `${color}12`,
+          padding: "4px 12px",
+          fontSize: 12,
+          fontWeight: 600,
+          letterSpacing: 0.5,
+          border: isNeutral ? "1px solid #444" : `1px solid ${color}50`
+        }}>
+          {label}
+        </span>
+      );
+    };
+
+    const StatusDot = ({ status }) => {
+      const color = statusColor(status);
+      return (
+        <span style={{
+          display: "inline-block",
+          width: 12,
+          height: 12,
+          borderRadius: "50%",
+          backgroundColor: color,
+          boxShadow: status && status !== "—" ? `0 0 6px ${color}` : "none"
+        }} />
+      );
+    };
+
+    const AssetIcon = ({ symbol, size = 18 }) => {
+      const logo = getAssetLogo(symbol);
+      if (logo) {
+        return (
+          <img
+            src={logo}
+            alt={symbol}
+            style={{
+              width: size,
+              height: size,
+              borderRadius: 4,
+              objectFit: "contain",
+              marginRight: 8,
+              verticalAlign: "middle"
+            }}
+            onError={(e) => { e.target.style.display = 'none'; }}
+          />
+        );
+      }
+      // Fallback: colored circle with first letter
+      const colors = {
+        "GOLD": "#FFD700",
+        "SILVER": "#C0C0C0",
+      };
+      return (
+        <span style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: size,
+          height: size,
+          borderRadius: 4,
+          backgroundColor: colors[symbol] || "#333",
+          color: colors[symbol] ? "#000" : "#888",
+          fontSize: 10,
+          fontWeight: 700,
+          marginRight: 8,
+          verticalAlign: "middle"
+        }}>
+          {symbol.slice(0, 2)}
+        </span>
+      );
+    };
+
+    // ============================================
+    // ONGLETS - CONTENU
+    // ============================================
+
+    // Calculer le prochain événement avec date précise (exclut les ranges de mois/années)
+    const getNextEvent = () => {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+
+      let closest = null;
+      let closestDate = null;
+
+      data.calendrier.forEach(event => {
+        // Format "6 Jan 2026" - date exacte
+        const specificMatch = event.date.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (specificMatch) {
+          const day = parseInt(specificMatch[1]);
+          const month = MONTHS[specificMatch[2]];
+          const year = parseInt(specificMatch[3]);
+          if (month !== undefined) {
+            const eventDate = new Date(year, month, day);
+            if (eventDate >= now && (!closestDate || eventDate < closestDate)) {
+              closestDate = eventDate;
+              const daysLeft = Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24));
+              closest = { name: event.event, date: event.date, daysLeft, expected: event.signal || "???" };
+            }
+          }
+        }
+        // Format "27-28 Jan 2026" - range de jours (prendre le premier jour)
+        const rangeMatch = event.date.match(/^(\d{1,2})-(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (rangeMatch) {
+          const day = parseInt(rangeMatch[1]);
+          const month = MONTHS[rangeMatch[3]];
+          const year = parseInt(rangeMatch[4]);
+          if (month !== undefined) {
+            const eventDate = new Date(year, month, day);
+            if (eventDate >= now && (!closestDate || eventDate < closestDate)) {
+              closestDate = eventDate;
+              const daysLeft = Math.ceil((eventDate - now) / (1000 * 60 * 60 * 24));
+              closest = { name: event.event, date: event.date, daysLeft, expected: event.signal || "???" };
+            }
+          }
+        }
+      });
+
+      return closest || { name: "—", date: "—", daysLeft: 0, expected: "—" };
+    };
+
+    const nextEvent = getNextEvent();
+
+    const TabDashboard = () => (
+      <>
+        {/* Bandeau statique */}
+        <div className="static-banner" style={{
+          background: data.globalSentiment === "bearish" ? "rgba(26, 0, 0, 0.5)" : data.globalSentiment === "bullish" ? "rgba(0, 26, 26, 0.5)" : "#0a0a0a",
+          border: `1px solid ${data.globalSentiment === "bearish" ? "rgba(255, 23, 68, 0.3)" : data.globalSentiment === "bullish" ? "rgba(64, 240, 208, 0.3)" : "rgba(100, 100, 100, 0.3)"}`,
+          boxShadow: `0 0 15px ${data.globalSentiment === "bearish" ? "rgba(255, 23, 68, 0.15)" : data.globalSentiment === "bullish" ? "rgba(64, 240, 208, 0.15)" : "rgba(100, 100, 100, 0.1)"}`
+        }}>
+          <div className="banner-item banner-summary" style={{ color: data.globalSentiment === "bearish" ? "#ff6b35" : data.globalSentiment === "bullish" ? "#40F0D0" : "#888" }}>
+            ▸ {data.summary}
+          </div>
+          <div className="banner-item banner-alert">
+            ▲ {nextEvent.name} | {nextEvent.date} ({nextEvent.daysLeft}j) | Attendu: {nextEvent.expected}
+          </div>
+        </div>
+
+        <div className="three-cols">
+          <div className="col-box">
+            <div className="col-header">ACTIFS</div>
+            <div className="sit-header-compact">
+              <span>Secteur</span>
+              <span>M</span>
+              <span>W</span>
+              <span>D</span>
+              <span>Notes</span>
+            </div>
+            {data.situation.map((row, i) => (
+              <div key={i} className="sit-row-compact" style={getSituationHighlight(row.m, row.h, row.j)}>
+                <span className="row-label" style={{ color: getActionColor(row.m, row.h, row.j), textTransform: "uppercase" }}>{row.secteur}</span>
+                <span><StatusDot status={row.m} /></span>
+                <span><StatusDot status={row.h} /></span>
+                <span><StatusDot status={row.j} /></span>
+                <span style={{ color: getActionColor(row.m, row.h, row.j), fontSize: 12 }}>{row.secteur === "Altcoins" ? highlightTickers(row.action) : row.action}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="col-box">
+            <div className="col-header">PARAMÈTRES ET RATIOS</div>
+            <div className="param-header-compact">
+              <span>Paramètre</span>
+              <span>Notes</span>
+              <span>Statut</span>
+            </div>
+            {data.vueGlobale.map((row, i) => (
+              <div key={i} className="param-row-compact" style={getMacroHighlight(row.status)}>
+                <span className="row-label" style={{ color: statusColor(row.status), minWidth: 100, maxWidth: 140 }}>{row.param}</span>
+                <span style={{ fontSize: 12, flex: 1, minWidth: 0 }}>
+                  <span style={{ color: statusColor(row.status) }}>{row.signal}</span>
+                  {row.warning && <span style={{ color: "#ff5533", marginLeft: 8 }}>⚠ {row.warning}</span>}
+                </span>
+                <span style={{ minWidth: 40, display: "flex", justifyContent: "center" }}><StatusDot status={row.status} /></span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Bandeau défilant en bas */}
+        <div className="scrolling-banner" style={{ marginTop: 16 }}>
+          <div className="scrolling-content-medium">
+            {data.proverbs.map((p, i) => (
+              <React.Fragment key={i}>
+                <span className="banner-item" style={{ color: "#888", fontStyle: "italic" }}>
+                  {p}
+                </span>
+                <span className="banner-separator">•••</span>
+                <span className="banner-item" style={{ color: "var(--chrome)" }}>
+                  ▼ {data.recentEvents}
+                </span>
+                <span className="banner-separator">•••</span>
+              </React.Fragment>
+            ))}
+            {/* Duplicate for seamless loop */}
+            {data.proverbs.map((p, i) => (
+              <React.Fragment key={`dup-${i}`}>
+                <span className="banner-item" style={{ color: "#888", fontStyle: "italic" }}>
+                  {p}
+                </span>
+                <span className="banner-separator">•••</span>
+                <span className="banner-item" style={{ color: "var(--chrome)" }}>
+                  ▼ {data.recentEvents}
+                </span>
+                <span className="banner-separator">•••</span>
+              </React.Fragment>
+            ))}
+          </div>
+        </div>
+
+      </>
+    );
+
+    const TabCalendrier = () => {
+      // Déterminer si un événement est cette semaine (ou période en cours)
+      const isThisWeek = (dateStr) => {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        const startOfWeek = new Date(now);
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1); // Lundi
+        startOfWeek.setHours(0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek);
+        endOfWeek.setDate(startOfWeek.getDate() + 6); // Dimanche
+        endOfWeek.setHours(23, 59, 59, 999);
+
+        // Parser différents formats de date
+  
+        // Format "6 Jan 2026" ou "16 Jan 2026"
+        const specificMatch = dateStr.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/);
+        if (specificMatch) {
+          const day = parseInt(specificMatch[1]);
+          const month = MONTHS[specificMatch[2]];
+          const year = parseInt(specificMatch[3]);
+          if (month !== undefined) {
+            const eventDate = new Date(year, month, day);
+            return eventDate >= startOfWeek && eventDate <= endOfWeek;
+          }
+        }
+
+        // Format "27-28 Jan 2026" (range de jours)
+        const rangeMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})\s+(\w+)\s+(\d{4})$/);
+        if (rangeMatch) {
+          const day1 = parseInt(rangeMatch[1]);
+          const day2 = parseInt(rangeMatch[2]);
+          const month = MONTHS[rangeMatch[3]];
+          const year = parseInt(rangeMatch[4]);
+          if (month !== undefined) {
+            const eventStart = new Date(year, month, day1);
+            const eventEnd = new Date(year, month, day2);
+            return (eventStart >= startOfWeek && eventStart <= endOfWeek) ||
+                   (eventEnd >= startOfWeek && eventEnd <= endOfWeek) ||
+                   (eventStart <= startOfWeek && eventEnd >= endOfWeek);
+          }
+        }
+
+        // Format "Jan 2026" (mois entier) - inclure si on est dans ce mois
+        const monthOnlyMatch = dateStr.match(/^(\w+)\s+(\d{4})$/);
+        if (monthOnlyMatch) {
+          const month = MONTHS[monthOnlyMatch[1]];
+          const year = parseInt(monthOnlyMatch[2]);
+          if (month !== undefined && month === currentMonth && year === currentYear) {
+            return true;
+          }
+        }
+
+        // Format "Jan-Fév 2026" (range de mois) - inclure si on est dans cette période
+        const monthRangeMatch = dateStr.match(/^([A-Za-zÀ-ÿ]+)-([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (monthRangeMatch) {
+          const month1 = MONTHS[monthRangeMatch[1]];
+          const month2 = MONTHS[monthRangeMatch[2]];
+          const year = parseInt(monthRangeMatch[3]);
+          if (month1 !== undefined && month2 !== undefined && year === currentYear) {
+            if (currentMonth >= month1 && currentMonth <= month2) {
+              return true;
+            }
+          }
+        }
+
+        // Format "2026" (année seule) - inclure si on est dans cette année
+        const yearOnlyMatch = dateStr.match(/^(\d{4})$/);
+        if (yearOnlyMatch) {
+          const year = parseInt(yearOnlyMatch[1]);
+          return year === currentYear;
+        }
+
+        return false;
+      };
+
+      // Déterminer si un événement est passé
+      const isPast = (dateStr) => {
+        const now = new Date();
+        now.setHours(0, 0, 0, 0);
+  
+        // Format "6 Jan 2026"
+        const specificMatch = dateStr.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/);
+        if (specificMatch) {
+          const day = parseInt(specificMatch[1]);
+          const month = MONTHS[specificMatch[2]];
+          const year = parseInt(specificMatch[3]);
+          if (month !== undefined) {
+            const eventDate = new Date(year, month, day);
+            return eventDate < now;
+          }
+        }
+
+        // Format "27-28 Jan 2026" - passé si le dernier jour est passé
+        const rangeMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})\s+(\w+)\s+(\d{4})$/);
+        if (rangeMatch) {
+          const day2 = parseInt(rangeMatch[2]);
+          const month = MONTHS[rangeMatch[3]];
+          const year = parseInt(rangeMatch[4]);
+          if (month !== undefined) {
+            const eventEnd = new Date(year, month, day2);
+            return eventEnd < now;
+          }
+        }
+
+        // Format "Jan 2026" - passé si on n'est plus dans ce mois
+        const monthOnlyMatch = dateStr.match(/^(\w+)\s+(\d{4})$/);
+        if (monthOnlyMatch) {
+          const month = MONTHS[monthOnlyMatch[1]];
+          const year = parseInt(monthOnlyMatch[2]);
+          if (month !== undefined) {
+            const lastDayOfMonth = new Date(year, month + 1, 0);
+            return lastDayOfMonth < now;
+          }
+        }
+
+        // Format "Jan-Fév 2026" - passé si on n'est plus dans cette période
+        const monthRangeMatch = dateStr.match(/^([A-Za-zÀ-ÿ]+)-([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (monthRangeMatch) {
+          const month2 = MONTHS[monthRangeMatch[2]];
+          const year = parseInt(monthRangeMatch[3]);
+          if (month2 !== undefined) {
+            const lastDayOfPeriod = new Date(year, month2 + 1, 0);
+            return lastDayOfPeriod < now;
+          }
+        }
+
+        // Format "2026" (année seule) - passé si l'année est terminée
+        const yearOnlyMatch = dateStr.match(/^(\d{4})$/);
+        if (yearOnlyMatch) {
+          const year = parseInt(yearOnlyMatch[1]);
+          return year < now.getFullYear();
+        }
+
+        return false;
+      };
+
+      // Fonction pour parser une date et obtenir une valeur de tri
+      const parseDateForSort = (dateStr) => {
+  
+        // Format "6 Jan 2026" - priorité 1 (date exacte)
+        const specificMatch = dateStr.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (specificMatch) {
+          return { date: new Date(parseInt(specificMatch[3]), MONTHS[specificMatch[2]] || 0, parseInt(specificMatch[1])), priority: 1 };
+        }
+
+        // Format "27-28 Jan 2026" - priorité 1 (range de jours, tri par 1er jour)
+        const rangeMatch = dateStr.match(/^(\d{1,2})-(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (rangeMatch) {
+          return { date: new Date(parseInt(rangeMatch[4]), MONTHS[rangeMatch[3]] || 0, parseInt(rangeMatch[1])), priority: 1 };
+        }
+
+        // Format "Jan 2026" - priorité 2 (mois entier)
+        const monthOnlyMatch = dateStr.match(/^([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (monthOnlyMatch) {
+          return { date: new Date(parseInt(monthOnlyMatch[2]), MONTHS[monthOnlyMatch[1]] || 0, 1), priority: 2 };
+        }
+
+        // Format "Jan-Fév 2026" - priorité 3 (range de mois)
+        const monthRangeMatch = dateStr.match(/^([A-Za-zÀ-ÿ]+)-([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+        if (monthRangeMatch) {
+          return { date: new Date(parseInt(monthRangeMatch[3]), MONTHS[monthRangeMatch[1]] || 0, 1), priority: 3 };
+        }
+
+        // Format "2026" - priorité 4 (année seule)
+        const yearOnlyMatch = dateStr.match(/^(\d{4})/);
+        if (yearOnlyMatch) {
+          return { date: new Date(parseInt(yearOnlyMatch[1]), 0, 1), priority: 4 };
+        }
+
+        return { date: new Date(9999, 0, 1), priority: 5 };
+      };
+
+      // Fonction de tri des événements
+      const sortEvents = (events) => {
+        return [...events].sort((a, b) => {
+          const parsedA = parseDateForSort(a.date);
+          const parsedB = parseDateForSort(b.date);
+          // D'abord par priorité INVERSE (dates vagues en haut comme épée de Damoclès)
+          if (parsedA.priority !== parsedB.priority) return parsedB.priority - parsedA.priority;
+          // Ensuite par date chronologique
+          return parsedA.date - parsedB.date;
+        });
+      };
+
+      // Filtrer et trier les événements
+      const thisWeekEvents = sortEvents(data.calendrier.filter(row => isThisWeek(row.date) && !isPast(row.date)));
+      const futureEvents = sortEvents(data.calendrier.filter(row => !isThisWeek(row.date) && !isPast(row.date)));
+      const pastEvents = sortEvents(data.calendrier.filter(row => isPast(row.date)));
+
+      // Calculer les dates de la semaine pour l'affichage
+      const now = new Date();
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay() + 1);
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      const formatShortDate = (d) => `${d.getDate()} ${["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"][d.getMonth()]}`;
+      const weekLabel = `${formatShortDate(startOfWeek)} - ${formatShortDate(endOfWeek)} ${endOfWeek.getFullYear()}`;
+
+      const typeColor = (type) => ({
+        "Fed": "#f59e0b",
+        "Supreme Court": "#ef4444",
+        "Commerce": "#f97316",
+        "Indices": "#00E0C0",
+        "Crypto": "#8b5cf6",
+        "Emploi": "#3b82f6"
+      }[type] || "#666");
+
+      const typeBg = (type) => ({
+        "Fed": "#1a150a",
+        "Supreme Court": "#1a0f0f",
+        "Commerce": "#1a120a",
+        "Indices": "#0a1a0a",
+        "Crypto": "#120a1a",
+        "Emploi": "#0a0f1a"
+      }[type] || "transparent");
+
+      return (
+        <>
+          {/* Événements à venir */}
+          <div className="corner-box">
+            <div className="section-header">À VENIR</div>
+            {/* Événements de cette semaine avec indicateur vertical */}
+            {thisWeekEvents.length > 0 && (
+              <div style={{ display: "flex", marginBottom: 8 }}>
+                <div style={{
+                  width: 24,
+                  background: "linear-gradient(180deg, #00E0C0 0%, #0a8080 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0
+                }}>
+                  <span style={{
+                    writingMode: "vertical-rl",
+                    textOrientation: "mixed",
+                    transform: "rotate(180deg)",
+                    color: "#000",
+                    fontSize: 9,
+                    fontWeight: 700,
+                    letterSpacing: 1,
+                    textTransform: "uppercase"
+                  }}>
+                    Cette semaine
+                  </span>
+                </div>
+                <div style={{ flex: 1 }}>
+                  {thisWeekEvents.map((row, i) => (
+                    <div key={i} className="cal-row-v2" style={{
+                      borderLeft: "none",
+                      background: typeBg(row.type)
+                    }}>
+                      <div className="cal-date">{row.date}</div>
+                      <div className="cal-content">
+                        <div className="cal-event">
+                          <span style={{ color: row.status === "bullish" ? "#40F0D0" : row.status === "bearish" ? "#ff6b35" : "#888", fontWeight: 600 }}>
+                            {row.event}
+                          </span>
+                          <span style={{ color: typeColor(row.type), fontSize: 10, marginLeft: 8 }}>{row.type}</span>
+                        </div>
+                        <div className="cal-signal">{row.signal}</div>
+                        {row.notes && <div className="cal-notes">{row.notes}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Autres événements futurs */}
+            {futureEvents.map((row, i) => (
+              <div key={i} className="cal-row-v2" style={{
+                borderLeft: `3px solid ${typeColor(row.type)}`,
+                background: typeBg(row.type)
+              }}>
+                <div className="cal-date">{row.date}</div>
+                <div className="cal-content">
+                  <div className="cal-event">
+                    <span style={{ color: row.status === "bullish" ? "#40F0D0" : "#888", fontWeight: 600 }}>
+                      {row.event}
+                    </span>
+                    <span style={{ color: typeColor(row.type), fontSize: 10, marginLeft: 8 }}>{row.type}</span>
+                  </div>
+                  <div className="cal-signal">{row.signal}</div>
+                  {row.notes && <div className="cal-notes">{row.notes}</div>}
+                </div>
+              </div>
+            ))}
+
+            {thisWeekEvents.length === 0 && futureEvents.length === 0 && (
+              <div style={{ padding: 16, color: "#555", fontSize: 12 }}>Aucun événement à venir</div>
+            )}
+          </div>
+
+          {/* Historique - événements passés */}
+          {pastEvents.length > 0 && (
+            <details className="corner-box" style={{ marginTop: 16 }}>
+              <summary style={{
+                color: "#666",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                padding: "12px 16px",
+                borderBottom: "1px solid #222"
+              }}>
+                HISTORIQUE ({pastEvents.length} événement{pastEvents.length > 1 ? "s" : ""})
+              </summary>
+              <div style={{ opacity: 0.7 }}>
+                {pastEvents.map((row, i) => (
+                  <div key={i} className="cal-row-v2" style={{
+                    borderLeft: `3px solid ${typeColor(row.type)}`,
+                    background: typeBg(row.type)
+                  }}>
+                    <div className="cal-date">{row.date}</div>
+                    <div className="cal-content">
+                      <div className="cal-event">
+                        <span style={{ color: row.status === "bullish" ? "#40F0D0" : "#666", fontWeight: 600 }}>
+                          {row.event}
+                        </span>
+                        <span style={{ color: typeColor(row.type), fontSize: 10, marginLeft: 8 }}>{row.type}</span>
+                      </div>
+                      <div className="cal-signal">{row.signal}</div>
+                      {row.notes && <div className="cal-notes">{row.notes}</div>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </>
+      );
+    };
+
+    const TabMacro = () => (
+      <>
+        <div className="macro-grid">
+          <div className="corner-box">
+          <div className="section-header">Macro ET Liquidité</div>
+          <div className="generic-row" style={{ borderBottom: "1px solid rgba(0, 224, 192, 0.3)", color: "rgba(0, 224, 192, 0.4)", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>
+            <span style={{ minWidth: 80 }}>Paramètre</span>
+            <span style={{ flex: 1 }}>Notes</span>
+            <span>Statut</span>
+          </div>
+          {data.macroLiquidite.map((row, i) => (
+            <div key={i} className="generic-row" style={getMacroHighlight(row.status)}>
+              <span style={{ fontWeight: 600, color: statusColor(row.status), minWidth: 80, fontSize: 12 }}>{row.param}</span>
+              <span style={{ color: statusColor(row.status), fontSize: 12, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <span style={{ minWidth: 40, display: "flex", justifyContent: "center" }}><StatusDot status={row.status} /></span>
+            </div>
+          ))}
+        </div>
+
+        <div className="corner-box">
+          <div className="section-header">Ratios</div>
+          <div className="generic-row" style={{ borderBottom: "1px solid rgba(0, 224, 192, 0.3)", color: "rgba(0, 224, 192, 0.4)", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>
+            <span style={{ minWidth: 80 }}>Ratio</span>
+            <span style={{ flex: 1 }}>Notes</span>
+            <span>Statut</span>
+          </div>
+          {data.ratios.map((row, i) => (
+            <div key={i} className="generic-row" style={getMacroHighlight(row.status)}>
+              <span style={{ fontWeight: 600, color: statusColor(row.status), minWidth: 80, fontSize: 12 }}>{row.param}</span>
+              <span style={{ color: statusColor(row.status), fontSize: 12, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <span style={{ minWidth: 40, display: "flex", justifyContent: "center" }}><StatusDot status={row.status} /></span>
+            </div>
+          ))}
+        </div>
+
+        <div className="corner-box">
+          <div className="section-header">Flux Crypto</div>
+          <div className="generic-row" style={{ borderBottom: "1px solid rgba(0, 224, 192, 0.3)", color: "rgba(0, 224, 192, 0.4)", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>
+            <span style={{ minWidth: 100 }}>Paramètre</span>
+            <span style={{ flex: 1 }}>Notes</span>
+            <span>Statut</span>
+          </div>
+          {data.fluxCrypto.map((row, i) => (
+            <div key={i} className="generic-row" style={getMacroHighlight(row.status)}>
+              <span style={{ fontWeight: 600, color: statusColor(row.status), minWidth: 100, fontSize: 12 }}>{row.param}</span>
+              <span style={{ color: statusColor(row.status), fontSize: 12, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <span style={{ minWidth: 40, display: "flex", justifyContent: "center" }}><StatusDot status={row.status} /></span>
+            </div>
+          ))}
+        </div>
+
+        <div className="corner-box">
+          <div className="section-header">Sentiment ET Risque</div>
+          <div className="generic-row" style={{ borderBottom: "1px solid rgba(0, 224, 192, 0.3)", color: "rgba(0, 224, 192, 0.4)", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>
+            <span style={{ minWidth: 120 }}>Paramètre</span>
+            <span style={{ flex: 1 }}>Notes</span>
+            <span>Statut</span>
+          </div>
+          {data.sentiment.map((row, i) => (
+            <div key={i} className="generic-row" style={getMacroHighlight(row.status)}>
+              <span style={{ fontWeight: 600, color: statusColor(row.status), minWidth: 120, fontSize: 12 }}>{row.param}</span>
+              <span style={{ color: statusColor(row.status), fontSize: 12, flex: 1, minWidth: 0 }}>{row.signal}</span>
+              <span style={{ minWidth: 40, display: "flex", justifyContent: "center" }}><StatusDot status={row.status} /></span>
+            </div>
+          ))}
+        </div>
+      </div>
+      </>
+    );
+
+    const TabActifs = ({ marketData, yahooData, isLoading, onRefresh, lastUpdate }) => {
+      // Helper pour récupérer les données Yahoo ou fallback static
+      const getYahooData = (symbol) => yahooData[symbol] || staticMarketData[symbol] || {};
+
+      // Séparer les actifs par type
+      const commodities = data.actifs.filter(a => a.type === "Commodity").sort((a, b) => {
+        const rankA = getYahooData(a.actif)?.rank ?? 9999;
+        const rankB = getYahooData(b.actif)?.rank ?? 9999;
+        return rankA - rankB;
+      });
+      const actions = data.actifs.filter(a => a.type === "Action").sort((a, b) => {
+        const rankA = getYahooData(a.actif)?.rank ?? 9999;
+        const rankB = getYahooData(b.actif)?.rank ?? 9999;
+        return rankA - rankB;
+      });
+      const cryptos = data.actifs.filter(a => a.type === "Crypto").sort((a, b) => {
+        const rankA = marketData[getCmcSymbol(a.actif)]?.rank || 9999;
+        const rankB = marketData[getCmcSymbol(b.actif)]?.rank || 9999;
+        return rankA - rankB;
+      });
+
+      const renderHeader = (showRank = false) => (
+        <div className="actif-row-compact" style={{ borderBottom: "1px solid rgba(0, 224, 192, 0.3)", color: "rgba(0, 224, 192, 0.4)", fontSize: 10, textTransform: "uppercase", fontWeight: 600 }}>
+          {showRank && <span style={{ width: 24, flexShrink: 0 }}>Rang</span>}
+          <span style={{ width: 70, flexShrink: 0 }}>Actif</span>
+          <span style={{ width: 45, flexShrink: 0 }}>Secteur</span>
+          <span style={{ width: 55, flexShrink: 0 }}>Prix</span>
+          <span style={{ width: 50, flexShrink: 0 }}>MCap</span>
+          <span style={{ width: 30, flexShrink: 0, textAlign: "center" }}>Statut</span>
+          <span style={{ width: 55, flexShrink: 0, textAlign: "center" }}>IN/OUT</span>
+          <span style={{ flex: 1 }}>Notes</span>
+        </div>
+      );
+
+      // Style de surlignage selon le status
+      const getStatusHighlight = (status) => {
+        if (status === "bullish") return { background: "rgba(64, 240, 208, 0.08)", borderLeft: "2px solid #40F0D0" };
+        if (status === "bearish") return { background: "rgba(255, 107, 53, 0.08)", borderLeft: "2px solid #ff6b35" };
+        return {};
+      };
+
+      const renderAssetRow = (row, showRank = false, useYahoo = false) => {
+        // Utilise Yahoo Finance pour commodités/actions, CoinMarketCap pour crypto
+        const mkt = useYahoo ? getYahooData(row.actif) : (marketData[getCmcSymbol(row.actif)] || {});
+        const highlight = getStatusHighlight(row.status);
+        return (
+          <div key={row.actif} className="actif-row-compact" style={highlight}>
+            {showRank && (
+              <span style={{ color: mkt.rank ? "#00E0C0" : "#555", fontSize: 11, fontWeight: 600, width: 24, flexShrink: 0 }}>
+                {mkt.rank ? `#${mkt.rank}` : "—"}
+              </span>
+            )}
+            <span className="row-label" style={{ color: statusColor(row.status), display: "flex", alignItems: "center", width: 70, flexShrink: 0 }}>
+              <AssetIcon symbol={row.actif} size={16} />
+              {formatAssetName(row.actif)}
+            </span>
+            <span style={{ color: "#888", fontSize: 11, width: 45, flexShrink: 0 }}>{row.secteur}</span>
+            <span style={{ color: "#888", fontSize: 11, width: 55, flexShrink: 0 }}>{formatPrice(mkt.price)}</span>
+            <span style={{ color: "#888", fontSize: 11, width: 50, flexShrink: 0 }}>{formatMarketCap(mkt.marketCap)}</span>
+            <span style={{ width: 30, flexShrink: 0, display: "flex", justifyContent: "center" }}><StatusDot status={row.status} /></span>
+            <span style={{ color: "#888", fontSize: 11, width: 55, flexShrink: 0, textAlign: "center" }}>{row.cible || ""}</span>
+            <span style={{ color: "#999", fontSize: 11, flex: 1 }}>{row.signal}</span>
+          </div>
+        );
+      };
+
+      return (
+        <>
+          <div className="actifs-grid">
+            {/* Colonne gauche : Commodités + Actions */}
+            <div className="actifs-left">
+              {/* Bloc Commodités */}
+              <div className="corner-box" style={{ marginBottom: 16 }}>
+                <div className="col-header">MÉTAUX</div>
+                {renderHeader(true)}
+                {commodities.map(row => renderAssetRow(row, true, true))}
+              </div>
+
+              {/* Bloc Actions */}
+              <div className="corner-box">
+                <div className="col-header">ACTIONS</div>
+                {renderHeader(true)}
+                {actions.map(row => renderAssetRow(row, true, true))}
+              </div>
+            </div>
+
+            {/* Colonne droite : Cryptos */}
+            <div className="actifs-right">
+              <div className="corner-box">
+                <div className="col-header">CRYPTOS</div>
+                {renderHeader(true)}
+                {cryptos.map(row => renderAssetRow(row, true))}
+              </div>
+            </div>
+          </div>
+        </>
+      );
+    };
+
+    const TabSecteurs = () => (
+      <>
+        <div className="corner-box">
+        <div className="secteurs-header">
+          <span>Secteur</span>
+          <span>Description</span>
+          <span>Actions</span>
+          <span>ETFs</span>
+          <span>Notes</span>
+        </div>
+        {data.secteurs.map((row, i) => (
+          <div key={i} className="secteurs-row">
+            <span className="row-label" style={{ color: "#888", textTransform: "uppercase" }}>{row.secteur}</span>
+            <span style={{ color: "#888", fontSize: 12 }}>{row.description}</span>
+            <span style={{ color: row.actions === "À rechercher" ? "#555" : "#888", fontSize: 12 }}>{row.actions}</span>
+            <span style={{ color: row.etfs === "À rechercher" ? "#555" : "#888", fontSize: 12 }}>{row.etfs}</span>
+            <span style={{ color: "#555", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabDeFi = () => (
+      <>
+        <div className="corner-box">
+        <div className="defi-header">
+          <span>Métrique</span>
+          <span>Source</span>
+          <span>Statut</span>
+          <span>Notes</span>
+        </div>
+        {data.defi.map((row, i) => (
+          <div key={i} className="defi-row">
+            <span className="row-label" style={{ color: "#888" }}>{row.metric}</span>
+            <span style={{ color: "#00E0C0", fontSize: 13 }}>{row.source}</span>
+            <span><StatusBadge status={row.status} /></span>
+            <span style={{ color: "#555", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabOnchain = () => (
+      <>
+        <div className="corner-box">
+        <div className="onchain-header">
+          <span>Plateforme</span>
+          <span>Type</span>
+          <span>Métaux</span>
+          <span>Actions</span>
+          <span>Lien</span>
+        </div>
+        {data.onchain.map((row, i) => (
+          <div key={i} className="onchain-row">
+            <span className="row-label" style={{ color: "#888", textTransform: "uppercase" }}>{row.platform}</span>
+            <span style={{ color: row.type === "DEX" ? "#00E0C0" : "#ff6b35", fontSize: 13 }}>{row.type}</span>
+            <span style={{ color: row.metaux !== "—" ? "#00E0C0" : "#444", fontSize: 13 }}>{row.metaux}</span>
+            <span style={{ color: row.actions !== "—" ? "#00E0C0" : "#444", fontSize: 13 }}>{row.actions}</span>
+            <span style={{ color: "#666", fontSize: 12 }}>{row.notes}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    const TabNotes = () => (
+      <>
+        <div className="corner-box">
+        <div style={{ padding: "16px 20px", color: "#666", fontSize: 13, borderBottom: "1px solid rgba(0, 224, 192, 0.05)" }}>
+          Plan: abonnement test 1 mois ($139), cartographier indicateurs, puis suivi autonome.
+        </div>
+        <div className="notes-header">
+          <span>Indicateur</span>
+          <span>Description</span>
+          <span>Utilité</span>
+          <span>Alternative gratuite</span>
+        </div>
+        {data.notesITC.map((row, i) => (
+          <div key={i} className="notes-row">
+            <span className="row-label" style={{ color: "#888" }}>{row.indicateur}</span>
+            <span style={{ color: "#888", fontSize: 13 }}>{row.description}</span>
+            <span style={{ color: "#888", fontSize: 13 }}>{row.utilite}</span>
+            <span style={{ color: "#00E0C0", fontSize: 13 }}>{row.alternative}</span>
+          </div>
+        ))}
+      </div>
+      </>
+    );
+
+    // Composant AlertTicker - affichage statique
+    // Couleurs: vert si atteint, orange si proche
+    const AlertTicker = ({ alerts }) => {
+      // Helper pour récupérer le status d'un actif ou ratio
+      const getSymbolStatus = (symbol) => {
+        // D'abord chercher dans les ratios (ex: BTC/GOLD, ETH/BTC)
+        const ratio = data.ratios.find(r => r.param === symbol);
+        if (ratio) return ratio.status;
+        // Sinon chercher dans les actifs
+        const actif = data.actifs.find(a => a.actif === symbol);
+        return actif ? actif.status : "neutre";
+      };
+
+      return (
+        <div className="top-bar-alerts">
+          {alerts.map((alert, i) => {
+            // Pour IN: atteint si dist >= 0, pour OUT: atteint si dist <= 0
+            const isReached = alert.isOut ? alert.dist <= 0 : alert.dist >= 0;
+            const color = isReached ? "#40F0D0" : "#f59e0b";
+            const logo = getAssetLogo(alert.type === 'prix' ? alert.symbol : alert.symbol.split('/')[0]);
+            const direction = alert.isOut ? "OUT" : "IN";
+            const label = `${direction} ${alert.level}/${alert.totalTargets}`;
+            const symbolStatus = getSymbolStatus(alert.symbol);
+            return (
+              <span key={i} className="alert-item">
+                {logo && <img src={logo} alt="" />}
+                <span style={{ fontWeight: 600, color: statusColor(symbolStatus) }}>{alert.symbol}</span>
+                <span style={{ fontSize: 10, color: "#666" }}>{label}</span>
+                <span style={{ color }}>{alert.dist >= 0 ? "+" : ""}{alert.dist.toFixed(1)}%</span>
+              </span>
+            );
+          })}
+        </div>
+      );
+    };
+
+    const TabTrading = ({ marketData, yahooData, technicalIndicators }) => {
+      // Helper pour récupérer le statut marché d'un actif
+      const getAssetStatus = (symbol) => {
+        const actif = data.actifs.find(a => a.actif === symbol);
+        return actif ? actif.status : "neutre";
+      };
+
+      // Helper pour récupérer le prix d'un actif
+      const getPrice = (symbol) => {
+        // D'abord chercher dans Yahoo (actions, commodités, indices)
+        if (yahooData[symbol]?.price) return yahooData[symbol].price;
+        // Si c'est un symbole Yahoo, ne pas chercher dans crypto (évite conflit SPX crypto)
+        if (yahooSymbols[symbol]) {
+          if (staticMarketData[symbol]?.price) return staticMarketData[symbol].price;
+          return null;
+        }
+        // Sinon chercher dans CoinMarketCap (crypto)
+        if (marketData[symbol]?.price) return marketData[symbol].price;
+        // Fallback static
+        if (staticMarketData[symbol]?.price) return staticMarketData[symbol].price;
+        return null;
+      };
+
+      // Calcul du % de distance à la cible
+      const calcDistance = (current, target) => {
+        if (!current || !target) return null;
+        return ((target - current) / current) * 100;
+      };
+
+      // Formatage du % pour IN - Code couleur selon proximité à la cible
+      // Pour IN: on veut que le prix BAISSE jusqu'à la cible
+      // ≥ 0% : vert (cible atteinte, prix ≤ cible)
+      // -5% à 0% : jaune (très proche)
+      // -20% à -5% : orange (proche)
+      // < -20% : gris (loin)
+      const formatPercentIn = (pct) => {
+        if (pct === null) return "—";
+        let color;
+        if (pct >= 0) color = "#40F0D0";           // Atteint
+        else if (pct > -5) color = "#facc15";      // Très proche (jaune)
+        else if (pct > -20) color = "#f59e0b";     // Proche (orange)
+        else color = "#666";                        // Loin (gris foncé)
+        return <span style={{ color }}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</span>;
+      };
+
+      // Formatage du % pour OUT - Logique inversée
+      // Pour OUT: on veut que le prix MONTE jusqu'à la cible
+      // ≤ 0% : vert (cible atteinte, prix ≥ cible)
+      // 0% à 5% : jaune (très proche)
+      // 5% à 20% : orange (proche)
+      // > 20% : gris (loin)
+      const formatPercentOut = (pct) => {
+        if (pct === null) return "—";
+        let color;
+        if (pct <= 0) color = "#40F0D0";           // Atteint
+        else if (pct < 5) color = "#facc15";       // Très proche (jaune)
+        else if (pct < 20) color = "#f59e0b";      // Proche (orange)
+        else color = "#666";                        // Loin (gris foncé)
+        return <span style={{ color }}>{pct >= 0 ? "+" : ""}{pct.toFixed(1)}%</span>;
+      };
+
+      // Vérifie le statut de proximité d'une ligne (IN et OUT)
+      // Retourne: "reached_in", "reached_out", "close_in", "close_out", ou null
+      const getTargetStatus = (targetsIn, targetsOut, currentValue) => {
+        if (!currentValue) return null;
+        let bestStatus = null;
+
+        // Vérifier IN (on veut que le prix baisse) → vert = acheter
+        targetsIn.forEach(t => {
+          if (!t) return;
+          const dist = ((t - currentValue) / currentValue) * 100;
+          if (dist >= 0) bestStatus = "reached_in";
+          else if (dist > -5 && !bestStatus?.startsWith("reached")) bestStatus = "close_in";
+        });
+
+        // Vérifier OUT (on veut que le prix monte) → rouge = vendre
+        targetsOut.forEach(t => {
+          if (!t) return;
+          const dist = ((t - currentValue) / currentValue) * 100;
+          if (dist <= 0) bestStatus = "reached_out";
+          else if (dist < 5 && !bestStatus?.startsWith("reached")) bestStatus = "close_out";
+        });
+
+        return bestStatus;
+      };
+
+      // Style de highlight selon le statut
+      const getHighlightStyle = (status) => {
+        // IN = vert (acheter)
+        if (status === "reached_in") return { background: "rgba(64, 240, 208, 0.12)", borderLeft: "2px solid #40F0D0" };
+        if (status === "close_in") return { background: "rgba(250, 204, 21, 0.1)", borderLeft: "2px solid #facc15" };
+        // OUT = rouge (vendre)
+        if (status === "reached_out") return { background: "rgba(255, 107, 53, 0.12)", borderLeft: "2px solid #ff6b35" };
+        if (status === "close_out") return { background: "rgba(245, 158, 11, 0.1)", borderLeft: "2px solid #f59e0b" };
+        return {};
+      };
+
+      // Formatage prix compact
+      const formatPriceCompact = (price) => {
+        if (!price) return "—";
+        if (price >= 10000) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (price >= 100) return price.toLocaleString('en-US', { maximumFractionDigits: 0 });
+        if (price >= 1) return price.toLocaleString('en-US', { maximumFractionDigits: 2 });
+        if (price >= 0.01) return price.toFixed(4);
+        return price.toFixed(6);
+      };
+
+      // Helper pour récupérer le market cap
+      const getMcap = (symbol) => {
+        if (yahooData[symbol]?.marketCap) return yahooData[symbol].marketCap;
+        if (marketData[symbol]?.marketCap) return marketData[symbol].marketCap;
+        if (staticMarketData[symbol]?.marketCap) return staticMarketData[symbol].marketCap;
+        return null;
+      };
+
+      // Calcul du total market cap crypto (somme de tous les marketCaps dans marketData)
+      const getTotalCryptoMcap = () => {
+        let total = 0;
+        Object.values(marketData).forEach(coin => {
+          if (coin.marketCap) total += coin.marketCap;
+        });
+        return total || null;
+      };
+
+      // Calcul de la valeur d'un ratio (gère les types spéciaux)
+      const calculateRatioValue = (row) => {
+        // Type "dominance" : BTC.D, STABLES.D
+        if (row.type === "dominance") {
+          const totalMcap = getTotalCryptoMcap();
+          if (!totalMcap) return null;
+
+          // numerator peut être un string ou un array
+          if (Array.isArray(row.numerator)) {
+            // STABLES.D : somme des mcaps
+            let sumMcap = 0;
+            row.numerator.forEach(symbol => {
+              const mcap = getMcap(symbol);
+              if (mcap) sumMcap += mcap;
+            });
+            return sumMcap ? (sumMcap / totalMcap) * 100 : null;
+          } else {
+            // BTC.D : simple dominance
+            const mcap = getMcap(row.numerator);
+            const dominance = mcap ? (mcap / totalMcap) * 100 : null;
+            // +2.5 ajustement pour BTC.D pour correspondre à TradingView
+            return dominance && row.numerator === "BTC" ? dominance + 2.5 : dominance;
+          }
+        }
+
+        // Type "alts" : ALTS/BTC = (TOTAL3 - USDT) / BTC * 100
+        // TOTAL3 = Total - BTC - ETH, donc: (Total - BTC - ETH - USDT) / BTC * 100
+        if (row.type === "alts") {
+          const totalMcap = getTotalCryptoMcap();
+          const btcMcap = getMcap("BTC");
+          const ethMcap = getMcap("ETH");
+          const usdtMcap = getMcap("USDT");
+          if (!totalMcap || !btcMcap) return null;
+          const altsMcap = totalMcap - btcMcap - (ethMcap || 0) - (usdtMcap || 0);
+          return (altsMcap / btcMcap) * 100 - 10; // -10 ajustement pour correspondre à TradingView
+        }
+
+        // Ratio simple : prix / prix (avec multiplicateur optionnel)
+        const numPrice = getPrice(row.numerator);
+        const denPrice = getPrice(row.denominator);
+        if (!numPrice || !denPrice) return null;
+        const ratio = numPrice / denPrice;
+        return row.multiplier ? ratio * row.multiplier : ratio;
+      };
+
+      // Trier par market cap
+      const sortedPrix = [...data.tradingPrix].sort((a, b) => {
+        const mcapA = getMcap(a.actif) || 0;
+        const mcapB = getMcap(b.actif) || 0;
+        return mcapB - mcapA;
+      });
+
+      // Render une cellule de cible
+      const renderTarget = (target, isOut = false) => {
+        const color = target ? (isOut ? "#ff6b35" : "#40F0D0") : "#444";
+        return <span style={{ color, fontSize: 11 }}>{target ? "$" + formatPriceCompact(target) : "—"}</span>;
+      };
+
+      const renderTargetRatio = (target, isOut = false, suffix = "") => {
+        const color = target ? (isOut ? "#ff6b35" : "#40F0D0") : "#444";
+        return <span style={{ color, fontSize: 11 }}>{target ? target + suffix : "—"}</span>;
+      };
+
+      return (
+        <>
+          <div className="trading-grid">
+            {/* Ratios Calculés - EN PREMIER */}
+            <div className="corner-box">
+              <div className="col-header">RATIOS CALCULÉS</div>
+              <div className="trading-header">
+                <span style={{ width: 80 }}>Ratio</span>
+                <span style={{ width: 120, textAlign: "right" }}>Valeur</span>
+                <span style={{ width: 50, textAlign: "right" }}>IN 1</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>IN 2</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>IN 3</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>OUT 1</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>OUT 2</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>OUT 3</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 55, textAlign: "right", color: "#ff6b35" }}>INVAL</span>
+              </div>
+              {data.tradingRatios.map((row, i) => {
+                const ratioValue = calculateRatioValue(row);
+                const highlightStatus = getTargetStatus(row.targetIn, row.targetOut, ratioValue);
+                // Formatage selon le type de ratio
+                const formatRatioDisplay = () => {
+                  if (!ratioValue) return "—";
+                  if (row.type === "dominance") return ratioValue.toFixed(1) + "%";
+                  if (row.type === "alts") return ratioValue.toFixed(1);
+                  if (row.multiplier) return ratioValue.toFixed(ratioValue >= 100 ? 0 : 2);
+                  return ratioValue.toFixed(ratioValue < 1 ? 4 : 2);
+                };
+                return (
+                  <div key={i} className="trading-row" style={getHighlightStyle(highlightStatus)}>
+                    <span className="row-label" style={{ color: "#888", width: 80 }}>{row.ratio}</span>
+                    <span style={{ color: "#666", fontSize: 11, width: 120, textAlign: "right" }}>{formatRatioDisplay()}</span>
+                    {row.targetIn.map((t, j) => {
+                      const suffix = row.type === "dominance" ? "%" : "";
+                      return (
+                        <React.Fragment key={`in-${j}`}>
+                          <span style={{ width: 50, textAlign: "right" }}>{renderTargetRatio(t, false, suffix)}</span>
+                          <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentIn(calcDistance(ratioValue, t))}</span>
+                        </React.Fragment>
+                      );
+                    })}
+                    {row.targetOut.map((t, j) => {
+                      const suffix = row.type === "dominance" ? "%" : "";
+                      return (
+                        <React.Fragment key={`out-${j}`}>
+                          <span style={{ width: 50, textAlign: "right" }}>{renderTargetRatio(t, true, suffix)}</span>
+                          <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentOut(calcDistance(ratioValue, t))}</span>
+                        </React.Fragment>
+                      );
+                    })}
+                    <span style={{ width: 55, textAlign: "right", fontSize: 11, color: row.invalidation ? "#ff6b35" : "#333" }}>
+                      {row.invalidation ? row.invalidation : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Actifs - Trié par MCap */}
+            <div className="corner-box">
+              <div className="col-header">ACTIFS</div>
+              <div className="trading-header">
+                <span style={{ width: 80 }}>Actif</span>
+                <span style={{ width: 55, textAlign: "right" }}>MCap</span>
+                <span style={{ width: 65, textAlign: "right" }}>Prix</span>
+                <span style={{ width: 50, textAlign: "right" }}>IN 1</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>IN 2</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>IN 3</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>OUT 1</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>OUT 2</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 50, textAlign: "right" }}>OUT 3</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 55, textAlign: "right", color: "#ff6b35" }}>INVAL</span>
+                <span style={{ width: 60, textAlign: "right", color: "#666" }}>200W</span>
+                <span style={{ width: 45, textAlign: "right", color: "#666" }}>%</span>
+                <span style={{ width: 60, textAlign: "right", color: "#666" }}>50W</span>
+                <span style={{ width: 45, textAlign: "right", color: "#666" }}>%</span>
+                <span style={{ width: 50, textAlign: "right", color: "#666" }}>RSI 14W</span>
+              </div>
+              {sortedPrix.map((row, i) => {
+                const price = getPrice(row.actif);
+                const mcap = getMcap(row.actif);
+                const highlightStatus = getTargetStatus(row.targetIn, row.targetOut, price);
+                const ind = technicalIndicators[row.actif];
+                return (
+                  <div key={i} className="trading-row" style={getHighlightStyle(highlightStatus)}>
+                    <span className="row-label" style={{ color: "#888", width: 80, display: "flex", alignItems: "center" }}>
+                      <AssetIcon symbol={row.actif} size={16} />
+                      {formatAssetName(row.actif)}
+                    </span>
+                    <span style={{ color: "#666", fontSize: 11, width: 55, textAlign: "right" }}>{formatMarketCap(mcap)}</span>
+                    <span style={{ color: "#666", fontSize: 11, width: 65, textAlign: "right" }}>{"$" + formatPriceCompact(price)}</span>
+                    {row.targetIn.map((t, j) => (
+                      <React.Fragment key={`in-${j}`}>
+                        <span style={{ width: 50, textAlign: "right" }}>{renderTarget(t)}</span>
+                        <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentIn(calcDistance(price, t))}</span>
+                      </React.Fragment>
+                    ))}
+                    {row.targetOut.map((t, j) => (
+                      <React.Fragment key={`out-${j}`}>
+                        <span style={{ width: 50, textAlign: "right" }}>{renderTarget(t, true)}</span>
+                        <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentOut(calcDistance(price, t))}</span>
+                      </React.Fragment>
+                    ))}
+                    <span style={{ width: 55, textAlign: "right", fontSize: 11, color: row.invalidation ? "#ff6b35" : "#333" }}>
+                      {row.invalidation ? "$" + formatPriceCompact(row.invalidation) : "—"}
+                    </span>
+                    {/* Indicateurs techniques */}
+                    <span style={{ color: "#666", fontSize: 11, width: 60, textAlign: "right" }}>
+                      {ind?.sma200 ? "$" + formatPriceCompact(ind.sma200) : "—"}
+                    </span>
+                    <span style={{ color: ind?.sma200VsPrice < 0 ? "#ff6b35" : "#40F0D0", fontSize: 11, width: 45, textAlign: "right" }}>
+                      {ind?.sma200VsPrice ? (ind.sma200VsPrice > 0 ? "+" : "") + ind.sma200VsPrice.toFixed(0) + "%" : "—"}
+                    </span>
+                    <span style={{ color: "#666", fontSize: 11, width: 60, textAlign: "right" }}>
+                      {ind?.sma50 ? "$" + formatPriceCompact(ind.sma50) : "—"}
+                    </span>
+                    <span style={{ color: ind?.sma50VsPrice < 0 ? "#ff6b35" : "#40F0D0", fontSize: 11, width: 45, textAlign: "right" }}>
+                      {ind?.sma50VsPrice ? (ind.sma50VsPrice > 0 ? "+" : "") + ind.sma50VsPrice.toFixed(0) + "%" : "—"}
+                    </span>
+                    <span style={{
+                      color: ind?.rsi14 > 70 ? "#ff6b35" : ind?.rsi14 < 30 ? "#40F0D0" : "#00E0C0",
+                      fontSize: 11, width: 50, textAlign: "right"
+                    }}>
+                      {ind?.rsi14 ? ind.rsi14.toFixed(0) : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      );
+    };
+
+    // ============================================
+    // STYLES CSS
+    // ============================================
+
+    // Couleur Terminal Phosphore
+    const CHROME = '#00E0C0';
+
+    const styles = `
+      @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap');
+
+      :root {
+        --chrome: #00E0C0;
+        --chrome-medium: #40F0D0;
+        --chrome-bright: #70FFE0;
+        --chrome-dim: rgba(0, 224, 192, 0.5);
+        --chrome-border: rgba(0, 224, 192, 0.35);
+        --chrome-glow: rgba(0, 224, 192, 0.25);
+        --bg-deep: #040a0a;
+        --bg-panel: #000000;
+        --text-muted: #5a5a5a;
+        --bearish: #ff6b35;
+      }
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      /* Custom Scrollbar - WebKit (Chrome, Edge, Safari) */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--bg-deep);
+        border-left: 1px solid var(--chrome-border);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--chrome-border);
+        border-radius: 0;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--chrome-dim);
+      }
+
+      ::-webkit-scrollbar-corner {
+        background: var(--bg-deep);
+      }
+
+      /* Custom Scrollbar - Firefox */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: var(--chrome-border) var(--bg-deep);
+      }
+
+      body {
+        min-height: 100vh;
+        background-color: var(--bg-deep);
+        color: #888;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 14px;
+        line-height: 1.6;
+        overflow-x: hidden;
+      }
+
+      .dashboard {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        border: 1px solid var(--chrome-border);
+        margin: 10px;
+        background: var(--bg-deep);
+      }
+
+      .top-bar {
+        display: flex;
+        align-items: center;
+        padding: 16px 20px;
+        border-bottom: 1px solid var(--chrome-border);
+        background: var(--bg-panel);
+        gap: 20px;
+      }
+
+      .top-bar-alerts {
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        margin-left: auto;
+        padding-left: 20px;
+      }
+
+      .alert-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+      }
+
+      .alert-item img {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+      }
+
+      .top-bar-logo {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .top-bar-title {
+        font-weight: 600;
+        letter-spacing: 1px;
+        font-size: 13px;
+        color: var(--chrome);
+      }
+
+      .top-bar-tab {
+        margin-left: 40px;
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 1px;
+        color: var(--chrome-dim);
+        text-transform: uppercase;
+      }
+
+      .content-wrapper {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+
+      .sidebar {
+        width: 200px;
+        min-width: 200px;
+        background: var(--bg-panel);
+        border-right: 1px solid var(--chrome-border);
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        position: sticky;
+        top: 0;
+        height: calc(100vh - 70px);
+      }
+
+      .sidebar-tabs {
+        flex: 1;
+        padding: 16px 0;
+        overflow-y: auto;
+        min-height: 0;
+      }
+
+      .sidebar-footer {
+        padding: 16px;
+        border-top: 1px solid rgba(0, 224, 192, 0.3);
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        flex-shrink: 0;
+        background: var(--bg-panel);
+      }
+
+      .main-content {
+        flex: 1;
+        padding: 0;
+        overflow-x: hidden;
+        box-sizing: border-box;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+
+      .main-body {
+        flex: 1;
+        padding: 20px;
+        padding-bottom: 40px;
+      }
+
+      .dashboard::before {
+        content: "";
+        position: fixed;
+        top: 0; left: 0;
+        width: 100%; height: 100%;
+        background: repeating-linear-gradient(0deg, rgba(0,255,0,0.015) 0px, rgba(0,255,0,0.015) 1px, transparent 1px, transparent 3px);
+        pointer-events: none;
+        z-index: 1000;
+        opacity: 0.5;
+      }
+
+      .corner-box {
+        background: var(--bg-panel);
+        border: 1px solid var(--chrome-border);
+        position: relative;
+        max-width: 100%;
+        overflow: hidden;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+
+      .corner-box:hover {
+        box-shadow: 0 0 15px var(--chrome-glow);
+        border-color: rgba(0, 224, 192, 0.5);
+      }
+
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 2px solid var(--chrome-dim);
+        padding-bottom: 16px;
+        margin-bottom: 20px;
+      }
+
+      .tabs {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 0;
+      }
+
+      .tab {
+        padding: 12px 16px;
+        background: transparent;
+        border: none;
+        border-left: 3px solid transparent;
+        color: var(--text-muted);
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s;
+        text-align: left;
+        font-family: inherit;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      .tab:hover {
+        background: rgba(0, 224, 192, 0.05);
+        color: var(--chrome);
+        border-left-color: var(--chrome-muted);
+      }
+
+      .tab.active {
+        background: rgba(0, 224, 192, 0.08);
+        border-left-color: var(--chrome);
+        color: var(--chrome);
+      }
+
+      .static-banner {
+        width: 100%;
+        padding: 12px 16px;
+        margin-bottom: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 8px;
+        box-sizing: border-box;
+      }
+
+      .scrolling-banner {
+        width: 100%;
+        overflow: hidden;
+        background: rgba(0, 224, 192, 0.03);
+        border-top: 1px solid var(--chrome-dim);
+        border-bottom: 1px solid var(--chrome-dim);
+        padding: 12px 0;
+        margin-bottom: 16px;
+        position: relative;
+      }
+
+      .scrolling-content-medium {
+        display: inline-flex;
+        white-space: nowrap;
+        animation: scroll-left 90s linear infinite;
+        gap: 40px;
+      }
+
+      .scrolling-banner:hover .scrolling-content-medium {
+        animation-play-state: paused;
+      }
+
+      @keyframes scroll-left {
+        0% {
+          transform: translateX(0);
+        }
+        100% {
+          transform: translateX(-50%);
+        }
+      }
+
+      .banner-item {
+        display: inline-block;
+        font-size: 13px;
+        padding: 0 16px;
+      }
+
+      .banner-summary {
+        font-size: 15px;
+        font-weight: 400;
+      }
+
+      .banner-alert {
+        color: #ff6b35;
+      }
+
+      .banner-separator {
+        color: #333;
+        font-size: 12px;
+      }
+
+      .three-cols {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+        gap: 16px;
+        align-items: stretch;
+      }
+
+      .macro-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+
+      @media (max-width: 1200px) {
+        .three-cols {
+          grid-template-columns: 1fr;
+        }
+        .macro-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .col-box {
+        background: var(--bg-panel);
+        border: 1px solid var(--chrome-border);
+        min-width: 0;
+        overflow: hidden;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease;
+      }
+
+      .col-box:hover {
+        box-shadow: 0 0 15px var(--chrome-glow);
+        border-color: rgba(0, 224, 192, 0.5);
+      }
+
+      .col-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--chrome-border);
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 2px;
+        color: var(--chrome);
+      }
+
+      .sit-header-compact, .sit-row-compact {
+        display: grid;
+        grid-template-columns: 80px 22px 22px 22px 1fr;
+        padding: 10px 14px;
+        align-items: center;
+        gap: 6px;
+      }
+      .sit-header-compact {
+        font-size: 12px;
+        color: var(--chrome-dim);
+        border-bottom: 1px solid var(--chrome-border);
+        text-transform: uppercase;
+      }
+      .sit-row-compact {
+        font-size: 13px;
+        border-bottom: 1px solid rgba(0, 224, 192, 0.05);
+      }
+      .sit-row-compact:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .param-header-compact {
+        display: flex;
+        align-items: center;
+        padding: 10px 16px;
+        border-bottom: 1px solid var(--chrome-border);
+        gap: 10px;
+        font-size: 12px;
+        color: var(--chrome-dim);
+        text-transform: uppercase;
+      }
+      .param-header-compact span:first-child {
+        min-width: 100px;
+        max-width: 140px;
+      }
+      .param-header-compact span:nth-child(2) {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .param-row-compact {
+        display: flex;
+        align-items: flex-start;
+        padding: 10px 16px;
+        border-bottom: 1px solid rgba(0, 224, 192, 0.05);
+        gap: 10px;
+        min-width: 0;
+      }
+      .param-row-compact:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .tech-header-compact, .tech-row-compact {
+        display: grid;
+        grid-template-columns: 60px 1fr 1fr 1fr;
+        padding: 10px 16px;
+        align-items: center;
+        text-align: center;
+      }
+      .tech-header-compact {
+        font-size: 10px;
+        color: var(--chrome-dim);
+        border-bottom: 1px solid var(--chrome-border);
+        text-transform: uppercase;
+      }
+      .tech-header-compact span:first-child,
+      .tech-row-compact span:first-child {
+        text-align: left;
+      }
+      .tech-row-compact {
+        font-size: 13px;
+        border-bottom: 1px solid rgba(0, 224, 192, 0.05);
+      }
+      .tech-row-compact:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .section-header {
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--chrome-border);
+        font-weight: 600;
+        font-size: 13px;
+        letter-spacing: 2px;
+        color: var(--chrome);
+        text-transform: uppercase;
+      }
+
+      .cal-row-v2 {
+        display: flex;
+        padding: 6px 16px;
+        border-bottom: 1px solid rgba(0, 224, 192, 0.05);
+        gap: 12px;
+        align-items: flex-start;
+      }
+      .cal-row-v2:hover { background: rgba(0, 224, 192, 0.03) !important; }
+      .cal-date {
+        min-width: 120px;
+        color: var(--chrome-muted);
+        font-size: 12px;
+        font-weight: 500;
+      }
+      .cal-content { flex: 1; }
+      .cal-event { margin-bottom: 1px; }
+      .cal-signal { color: #888; font-size: 11px; }
+      .cal-notes { color: #555; font-size: 10px; margin-top: 1px; }
+
+      .generic-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 8px 16px;
+        border-bottom: 1px solid rgba(0, 224, 192, 0.05);
+        min-width: 0;
+      }
+      .generic-row:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .row-label {
+        font-weight: 600;
+        font-size: 12px;
+      }
+
+      .actifs-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        align-items: stretch;
+      }
+
+      .actifs-left {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .actifs-right {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .actifs-right .corner-box {
+        flex: 1;
+      }
+
+      .actif-row-compact {
+        display: flex;
+        align-items: center;
+        padding: 8px 16px;
+        border-bottom: 1px solid rgba(0, 224, 192, 0.05);
+        gap: 12px;
+      }
+      .actif-row-compact:hover { background: rgba(0, 224, 192, 0.03); }
+
+      @media (max-width: 1000px) {
+        .actifs-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .secteurs-header, .secteurs-row {
+        display: grid;
+        grid-template-columns: 120px 180px 1fr 120px 1fr;
+        padding: 8px 16px;
+        align-items: center;
+        gap: 10px;
+      }
+      .secteurs-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .secteurs-row { border-bottom: 1px solid rgba(0, 224, 192, 0.05); }
+      .secteurs-row:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .defi-header, .defi-row {
+        display: grid;
+        grid-template-columns: 180px 140px 100px 1fr;
+        padding: 12px 20px;
+        align-items: center;
+        gap: 12px;
+      }
+      .defi-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .defi-row { padding: 14px 20px; border-bottom: 1px solid rgba(0, 224, 192, 0.05); }
+      .defi-row:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .notes-header, .notes-row {
+        display: grid;
+        grid-template-columns: 160px 1fr 1fr 1fr;
+        padding: 12px 16px;
+        align-items: center;
+        gap: 10px;
+      }
+      .notes-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .notes-row { padding: 14px 20px; border-bottom: 1px solid rgba(0, 224, 192, 0.05); }
+      .notes-row:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .onchain-header, .onchain-row {
+        display: grid;
+        grid-template-columns: 140px 80px 120px 120px 1fr;
+        padding: 12px 20px;
+        align-items: center;
+        gap: 12px;
+      }
+      .onchain-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .onchain-row { padding: 14px 20px; border-bottom: 1px solid rgba(0, 224, 192, 0.05); }
+      .onchain-row:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .trading-grid {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      .trading-header, .trading-row {
+        display: flex;
+        align-items: center;
+        padding: 10px 16px;
+        gap: 12px;
+      }
+      .trading-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .trading-row { border-bottom: 1px solid rgba(0, 224, 192, 0.05); }
+      .trading-row:hover { background: rgba(0, 224, 192, 0.03); }
+
+      .bottom-nav {
+        margin-top: 40px;
+        padding: 20px 0;
+        border-top: 1px solid var(--chrome-border);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .bottom-nav-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: transparent;
+        border: 1px solid transparent;
+        color: var(--chrome-dim);
+        font-family: inherit;
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        cursor: pointer;
+        padding: 8px 16px;
+        transition: all 0.2s ease;
+      }
+
+      .bottom-nav-btn:hover {
+        color: var(--chrome);
+        border-color: var(--chrome-border);
+        background: rgba(0, 224, 192, 0.05);
+      }
+
+      .bottom-nav-btn:disabled {
+        opacity: 0.3;
+        cursor: not-allowed;
+      }
+
+      .bottom-nav-btn:disabled:hover {
+        color: var(--chrome-dim);
+        border-color: transparent;
+        background: transparent;
+      }
+
+      .bottom-nav-arrow {
+        color: var(--chrome);
+        font-size: 14px;
+      }
+
+      @media (max-width: 900px) {
+        .three-cols {
+          grid-template-columns: 1fr 1fr;
+        }
+        .three-cols .col-box:nth-child(3) {
+          grid-column: span 2;
+        }
+      }
+
+      @media (max-width: 600px) {
+        .dashboard { padding: 12px; font-size: 12px; }
+        .header { flex-direction: column; align-items: flex-start; gap: 8px; }
+        .tabs { gap: 4px; }
+        .tab { padding: 8px 12px; font-size: 11px; }
+        .three-cols {
+          grid-template-columns: 1fr;
+        }
+        .three-cols .col-box:nth-child(3) {
+          grid-column: span 1;
+        }
+      }
+    `;
+
+    // ============================================
+    // COMPOSANT PRINCIPAL
+    // ============================================
+
+    function Dashboard() {
+      const [activeTab, setActiveTab] = useState("dashboard");
+      const [marketData, setMarketData] = useState({});
+      const [yahooData, setYahooData] = useState({});
+      const [isLoading, setIsLoading] = useState(false);
+      const [lastUpdate, setLastUpdate] = useState(null);
+      const [showWeeklySummary, setShowWeeklySummary] = useState(false);
+      const [showApiConfig, setShowApiConfig] = useState(false);
+      const [snapshotData, setSnapshotData] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem("weeklySnapshot") || "null");
+        } catch { return null; }
+      });
+      const [reachedTargets, setReachedTargets] = useState(() => {
+        try {
+          return JSON.parse(localStorage.getItem("reachedTargets") || "{}");
+        } catch { return {}; }
+      });
+      const [technicalIndicators, setTechnicalIndicators] = useState({});
+      const [indicatorsLoading, setIndicatorsLoading] = useState(false);
+
+      const loadMarketData = async () => {
+        setIsLoading(true);
+
+        // Fetch crypto data from CoinMarketCap
+        const cryptoData = await fetchMarketData();
+        if (cryptoData) {
+          setMarketData(cryptoData);
+        }
+
+        // Fetch stocks & commodities from Yahoo Finance
+        const stocksData = await fetchYahooFinanceData();
+        if (stocksData) {
+          setYahooData(stocksData);
+        }
+
+        setLastUpdate(new Date().toLocaleTimeString('fr-FR'));
+        setIsLoading(false);
+      };
+
+      // Merge Yahoo data with static fallback
+      const getStockData = (symbol) => {
+        return yahooData[symbol] || staticMarketData[symbol] || {};
+      };
+
+      useEffect(() => {
+        loadMarketData();
+      }, []);
+
+      // Charger les indicateurs techniques (BTC pour commencer)
+      useEffect(() => {
+        const loadIndicators = async () => {
+          setIndicatorsLoading(true);
+          try {
+            // BTC via Yahoo Finance (BTC-USD)
+            const btcIndicators = await fetchIndicators("BTC", "BTC-USD");
+            if (btcIndicators) {
+              setTechnicalIndicators(prev => ({ ...prev, BTC: btcIndicators }));
+            }
+          } catch (error) {
+            console.error("Erreur chargement indicateurs:", error);
+          }
+          setIndicatorsLoading(false);
+        };
+        loadIndicators();
+      }, []);
+
+      // Vérifier les cibles atteintes quand les données changent
+      useEffect(() => {
+        if (Object.keys(marketData).length === 0 && Object.keys(yahooData).length === 0) return;
+
+        const getPrice = (symbol) => {
+          // Pour les actifs Yahoo (actions, indices, commodités), ne pas chercher dans marketData (crypto)
+          const isYahooAsset = yahooSymbols.hasOwnProperty(symbol);
+          if (isYahooAsset) {
+            if (yahooData[symbol]?.price) return yahooData[symbol].price;
+            if (staticMarketData[symbol]?.price) return staticMarketData[symbol].price;
+            return null;
+          }
+          // Pour les cryptos
+          if (marketData[symbol]?.price) return marketData[symbol].price;
+          return null;
+        };
+
+        const getMcap = (symbol) => {
+          if (marketData[symbol]) return marketData[symbol].marketCap;
+          if (yahooData[symbol]) return yahooData[symbol].marketCap;
+          return null;
+        };
+
+        const getTotalCryptoMcap = () => {
+          let total = 0;
+          Object.values(marketData).forEach(d => { if (d.marketCap) total += d.marketCap; });
+          return total;
+        };
+
+        const calculateRatioValue = (row) => {
+          if (row.type === "dominance") {
+            const totalMcap = getTotalCryptoMcap();
+            if (!totalMcap) return null;
+            if (Array.isArray(row.numerator)) {
+              let sum = 0;
+              row.numerator.forEach(symbol => { const mcap = getMcap(symbol); if (mcap) sum += mcap; });
+              return (sum / totalMcap) * 100;
+            }
+            const mcap = getMcap(row.numerator);
+            const dominance = mcap ? (mcap / totalMcap) * 100 : null;
+            return dominance && row.numerator === "BTC" ? dominance + 2.5 : dominance;
+          }
+          if (row.type === "alts") {
+            const totalMcap = getTotalCryptoMcap();
+            const btcMcap = getMcap("BTC");
+            const ethMcap = getMcap("ETH");
+            const usdtMcap = getMcap("USDT");
+            if (!totalMcap || !btcMcap) return null;
+            const altsMcap = totalMcap - btcMcap - (ethMcap || 0) - (usdtMcap || 0);
+            return (altsMcap / btcMcap) * 100 - 10;
+          }
+          const numPrice = getPrice(row.numerator);
+          const denPrice = getPrice(row.denominator);
+          if (!numPrice || !denPrice) return null;
+          const ratio = numPrice / denPrice;
+          return row.multiplier ? ratio * row.multiplier : ratio;
+        };
+
+        const now = new Date().toISOString();
+        const newReached = { ...reachedTargets };
+        let hasChanges = false;
+
+        // Vérifier cibles prix
+        data.tradingPrix.forEach(row => {
+          const price = getPrice(row.actif);
+          if (!price) return;
+
+          row.targetIn.forEach((target, idx) => {
+            if (target === null) return;
+            const key = `${row.actif}_IN_${idx + 1}`;
+            if (!newReached[key] && price <= target) {
+              newReached[key] = { date: now, price, target, type: "prix", symbol: row.actif, direction: "IN", level: idx + 1 };
+              hasChanges = true;
+            }
+          });
+
+          row.targetOut.forEach((target, idx) => {
+            if (target === null) return;
+            const key = `${row.actif}_OUT_${idx + 1}`;
+            if (!newReached[key] && price >= target) {
+              newReached[key] = { date: now, price, target, type: "prix", symbol: row.actif, direction: "OUT", level: idx + 1 };
+              hasChanges = true;
+            }
+          });
+        });
+
+        // Vérifier cibles ratios
+        data.tradingRatios.forEach(row => {
+          const value = calculateRatioValue(row);
+          if (!value) return;
+
+          // Validation: ignorer les valeurs aberrantes (> 100x la cible max ou très petites)
+          const allTargets = [...row.targetIn, ...row.targetOut].filter(t => t !== null);
+          if (allTargets.length > 0) {
+            const maxTarget = Math.max(...allTargets);
+            const minTarget = Math.min(...allTargets);
+            // Si la valeur est > 10x le max target ou < 0.01x le min target, c'est probablement un bug
+            if (value > maxTarget * 10 || value < minTarget * 0.01) {
+              console.warn(`Ratio ${row.ratio} valeur aberrante: ${value} (targets: ${minTarget}-${maxTarget})`);
+              return;
+            }
+          }
+
+          row.targetIn.forEach((target, idx) => {
+            if (target === null) return;
+            const key = `${row.ratio}_IN_${idx + 1}`;
+            if (!newReached[key] && value <= target) {
+              newReached[key] = { date: now, value, target, type: "ratio", symbol: row.ratio, direction: "IN", level: idx + 1 };
+              hasChanges = true;
+            }
+          });
+
+          row.targetOut.forEach((target, idx) => {
+            if (target === null) return;
+            const key = `${row.ratio}_OUT_${idx + 1}`;
+            if (!newReached[key] && value >= target) {
+              newReached[key] = { date: now, value, target, type: "ratio", symbol: row.ratio, direction: "OUT", level: idx + 1 };
+              hasChanges = true;
+            }
+          });
+        });
+
+        if (hasChanges) {
+          setReachedTargets(newReached);
+          localStorage.setItem("reachedTargets", JSON.stringify(newReached));
+        }
+      }, [marketData, yahooData]);
+
+      const tabs = [
+        { id: "dashboard", label: "Dashboard" },
+        { id: "trading", label: "Trading" },
+        { id: "actifs", label: "Actifs" },
+        { id: "macro", label: "Paramètres ET Ratios" },
+        { id: "calendrier", label: "Calendrier" },
+        { id: "secteurs", label: "Secteurs" },
+        { id: "defi", label: "DeFi" },
+        { id: "onchain", label: "Actions ET Métaux Onchain" },
+        { id: "notes", label: "Notes ITC" },
+      ];
+
+      const currentIndex = tabs.findIndex(t => t.id === activeTab);
+      const prevTab = currentIndex > 0 ? tabs[currentIndex - 1] : null;
+      const nextTab = currentIndex < tabs.length - 1 ? tabs[currentIndex + 1] : null;
+
+      const renderTab = () => {
+        switch (activeTab) {
+          case "dashboard": return <TabDashboard />;
+          case "calendrier": return <TabCalendrier />;
+          case "macro": return <TabMacro />;
+          case "actifs": return <TabActifs marketData={marketData} yahooData={yahooData} isLoading={isLoading} onRefresh={loadMarketData} lastUpdate={lastUpdate} />;
+          case "trading": return <TabTrading marketData={marketData} yahooData={yahooData} technicalIndicators={technicalIndicators} />;
+          case "secteurs": return <TabSecteurs />;
+          case "defi": return <TabDeFi />;
+          case "onchain": return <TabOnchain />;
+          case "notes": return <TabNotes />;
+          default: return <TabDashboard />;
+        }
+      };
+
+      const currentTab = tabs.find(t => t.id === activeTab);
+
+      // Générer les alertes (actifs à moins de 5% de leur cible)
+      const ALERT_THRESHOLD = 5; // %
+
+      const getPrice = (symbol) => {
+        if (yahooData[symbol]?.price) return yahooData[symbol].price;
+        // Si c'est un symbole Yahoo, ne pas chercher dans crypto (évite conflit SPX crypto)
+        if (yahooSymbols[symbol]) {
+          if (staticMarketData[symbol]?.price) return staticMarketData[symbol].price;
+          return null;
+        }
+        if (marketData[symbol]?.price) return marketData[symbol].price;
+        if (staticMarketData[symbol]?.price) return staticMarketData[symbol].price;
+        return null;
+      };
+
+      const getMcapApp = (symbol) => {
+        if (yahooData[symbol]?.marketCap) return yahooData[symbol].marketCap;
+        if (marketData[symbol]?.marketCap) return marketData[symbol].marketCap;
+        if (staticMarketData[symbol]?.marketCap) return staticMarketData[symbol].marketCap;
+        return null;
+      };
+
+      const getTotalCryptoMcapApp = () => {
+        let total = 0;
+        Object.values(marketData).forEach(coin => {
+          if (coin.marketCap) total += coin.marketCap;
+        });
+        return total || null;
+      };
+
+      const calculateRatioValueApp = (row) => {
+        if (row.type === "dominance") {
+          const totalMcap = getTotalCryptoMcapApp();
+          if (!totalMcap) return null;
+          if (Array.isArray(row.numerator)) {
+            let sumMcap = 0;
+            row.numerator.forEach(symbol => {
+              const mcap = getMcapApp(symbol);
+              if (mcap) sumMcap += mcap;
+            });
+            return sumMcap ? (sumMcap / totalMcap) * 100 : null;
+          } else {
+            const mcap = getMcapApp(row.numerator);
+            const dominance = mcap ? (mcap / totalMcap) * 100 : null;
+            return dominance && row.numerator === "BTC" ? dominance + 2.5 : dominance;
+          }
+        }
+        if (row.type === "alts") {
+          const totalMcap = getTotalCryptoMcapApp();
+          const btcMcap = getMcapApp("BTC");
+          const ethMcap = getMcapApp("ETH");
+          const usdtMcap = getMcapApp("USDT");
+          if (!totalMcap || !btcMcap) return null;
+          const altsMcap = totalMcap - btcMcap - (ethMcap || 0) - (usdtMcap || 0);
+          return (altsMcap / btcMcap) * 100 - 10; // -10 ajustement pour correspondre à TradingView
+        }
+        const numPrice = getPrice(row.numerator);
+        const denPrice = getPrice(row.denominator);
+        if (!numPrice || !denPrice) return null;
+        const ratio = numPrice / denPrice;
+        return row.multiplier ? ratio * row.multiplier : ratio;
+      };
+
+      const calcDist = (current, target) => {
+        if (!current || !target) return null;
+        return ((target - current) / current) * 100;
+      };
+
+      const generateAlerts = () => {
+        const alerts = [];
+
+        // Alertes sur prix individuels - IN
+        data.tradingPrix.forEach(row => {
+          const price = getPrice(row.actif);
+          if (!price) return;
+          const totalIn = row.targetIn.filter(t => t !== null).length;
+          const totalOut = row.targetOut.filter(t => t !== null).length;
+          row.targetIn.forEach((target, idx) => {
+            if (!target) return;
+            const dist = calcDist(price, target);
+            // IN: alerte si dist > -5% (proche ou atteint)
+            if (dist !== null && dist > -ALERT_THRESHOLD) {
+              alerts.push({
+                type: 'prix',
+                symbol: row.actif,
+                target,
+                dist,
+                level: idx + 1,
+                totalTargets: totalIn,
+                isOut: false
+              });
+            }
+          });
+          // OUT
+          row.targetOut.forEach((target, idx) => {
+            if (!target) return;
+            const dist = calcDist(price, target);
+            // OUT: alerte si dist < 5% (proche ou atteint)
+            if (dist !== null && dist < ALERT_THRESHOLD) {
+              alerts.push({
+                type: 'prix',
+                symbol: row.actif,
+                target,
+                dist,
+                level: idx + 1,
+                totalTargets: totalOut,
+                isOut: true
+              });
+            }
+          });
+        });
+
+        // Alertes sur ratios - IN (supporte dominances et ratios simples)
+        data.tradingRatios.forEach(row => {
+          const ratioValue = calculateRatioValueApp(row);
+          if (!ratioValue) return;
+          const totalIn = row.targetIn.filter(t => t !== null).length;
+          const totalOut = row.targetOut.filter(t => t !== null).length;
+          row.targetIn.forEach((target, idx) => {
+            if (!target) return;
+            const dist = calcDist(ratioValue, target);
+            if (dist !== null && dist > -ALERT_THRESHOLD) {
+              alerts.push({
+                type: 'ratio',
+                symbol: row.ratio,
+                target,
+                dist,
+                level: idx + 1,
+                totalTargets: totalIn,
+                isOut: false
+              });
+            }
+          });
+          // OUT
+          row.targetOut.forEach((target, idx) => {
+            if (!target) return;
+            const dist = calcDist(ratioValue, target);
+            if (dist !== null && dist < ALERT_THRESHOLD) {
+              alerts.push({
+                type: 'ratio',
+                symbol: row.ratio,
+                target,
+                dist,
+                level: idx + 1,
+                totalTargets: totalOut,
+                isOut: true
+              });
+            }
+          });
+        });
+
+        // Trier par proximité à la cible (abs(dist) croissant)
+        alerts.sort((a, b) => Math.abs(a.dist) - Math.abs(b.dist));
+
+        return alerts;
+      };
+
+      const alerts = generateAlerts();
+
+      return (
+        <>
+          <style>{styles}</style>
+          <div className="dashboard">
+            {/* Top bar - full width, no vertical dividers */}
+            <div className="top-bar">
+              <div className="top-bar-logo">
+                <span style={{ color: "#00E0C0", fontWeight: 700, fontSize: 18 }}>◆</span>
+                <span className="top-bar-title">ANALYSE MARCHÉS</span>
+              </div>
+              <span className="top-bar-tab">{currentTab ? currentTab.label : "Dashboard"}</span>
+
+              {/* Alertes défilantes */}
+              {alerts.length > 0 && <AlertTicker alerts={alerts} />}
+            </div>
+
+            {/* Content area with sidebar and main */}
+            <div className="content-wrapper">
+              <div className="sidebar">
+                <div className="sidebar-tabs">
+                  <div className="tabs">
+                    {tabs.map(tab => (
+                      <button
+                        key={tab.id}
+                        className={`tab ${activeTab === tab.id ? "active" : ""}`}
+                        onClick={() => setActiveTab(tab.id)}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="sidebar-footer">
+                  <button
+                    onClick={() => setShowWeeklySummary(true)}
+                    style={{
+                      background: "#0a0a0a",
+                      border: "1px solid rgba(0, 224, 192, 0.5)",
+                      color: "#00E0C0",
+                      padding: "8px 12px",
+                      fontSize: 11,
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      width: "100%",
+                      marginBottom: 8
+                    }}
+                  >
+                    ◆ Résumé Hebdo
+                  </button>
+                  <button
+                    onClick={loadMarketData}
+                    disabled={isLoading}
+                    style={{
+                      background: "#0a0a0a",
+                      border: "1px solid rgba(0, 224, 192, 0.3)",
+                      color: isLoading ? "#555" : "#00E0C0",
+                      padding: "8px 12px",
+                      fontSize: 11,
+                      cursor: isLoading ? "wait" : "pointer",
+                      fontFamily: "inherit",
+                      width: "100%"
+                    }}
+                  >
+                    {isLoading ? "Chargement..." : "↻ Actualiser"}
+                  </button>
+                  <button
+                    onClick={() => setShowApiConfig(true)}
+                    style={{
+                      background: "#0a0a0a",
+                      border: "1px solid rgba(0, 224, 192, 0.3)",
+                      color: "rgba(0, 224, 192, 0.6)",
+                      padding: "8px 12px",
+                      cursor: "pointer",
+                      fontFamily: "inherit",
+                      width: "100%",
+                      marginTop: 8,
+                      fontSize: 11
+                    }}
+                  >
+                    ⚙ API Keys
+                  </button>
+                  <div style={{ color: "rgba(0, 224, 192, 0.4)", fontSize: 11, marginTop: 8 }}>
+                    MàJ: {lastUpdate || data.lastUpdate}
+                  </div>
+                </div>
+              </div>
+
+              <div className="main-content">
+                <div className="main-body">
+                  {renderTab()}
+
+                  <div className="bottom-nav">
+                    <button
+                      className="bottom-nav-btn"
+                      onClick={() => prevTab && setActiveTab(prevTab.id)}
+                      disabled={!prevTab}
+                    >
+                      <span className="bottom-nav-arrow">←</span>
+                      {prevTab ? prevTab.label : ""}
+                    </button>
+                    <button
+                      className="bottom-nav-btn"
+                      onClick={() => nextTab && setActiveTab(nextTab.id)}
+                      disabled={!nextTab}
+                    >
+                      {nextTab ? nextTab.label : ""}
+                      <span className="bottom-nav-arrow">→</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Modal Configuration API */}
+          {showApiConfig && (
+            <div className="modal-overlay" onClick={() => setShowApiConfig(false)}>
+              <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: 450 }}>
+                <div className="modal-header">
+                  <span>⚙ Configuration API</span>
+                  <button className="modal-close" onClick={() => setShowApiConfig(false)}>✕</button>
+                </div>
+                <div style={{ padding: 20 }}>
+                  <p style={{ color: "rgba(0, 224, 192, 0.7)", fontSize: 12, marginBottom: 20 }}>
+                    Clés stockées localement dans ton navigateur (jamais envoyées ailleurs).
+                  </p>
+
+                  <div style={{ marginBottom: 16 }}>
+                    <label style={{ color: "#00E0C0", fontSize: 12, display: "block", marginBottom: 4 }}>
+                      Finnhub API Key (actions)
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={getApiKeys().finnhub}
+                      id="finnhub-key-input"
+                      placeholder="Obtenir sur finnhub.io"
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        background: "#0a0a0a",
+                        border: "1px solid rgba(0, 224, 192, 0.3)",
+                        color: "#00E0C0",
+                        fontFamily: "inherit",
+                        fontSize: 12
+                      }}
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 20 }}>
+                    <label style={{ color: "#00E0C0", fontSize: 12, display: "block", marginBottom: 4 }}>
+                      GoldAPI Key (métaux)
+                    </label>
+                    <input
+                      type="text"
+                      defaultValue={getApiKeys().goldapi}
+                      id="goldapi-key-input"
+                      placeholder="Obtenir sur goldapi.io"
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        background: "#0a0a0a",
+                        border: "1px solid rgba(0, 224, 192, 0.3)",
+                        color: "#00E0C0",
+                        fontFamily: "inherit",
+                        fontSize: 12
+                      }}
+                    />
+                    <p style={{ color: "rgba(0, 224, 192, 0.4)", fontSize: 10, marginTop: 4 }}>
+                      Cache 24h activé (économise les requêtes)
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const finnhubKey = document.getElementById('finnhub-key-input').value;
+                      const goldapiKey = document.getElementById('goldapi-key-input').value;
+                      setApiKeys(finnhubKey, goldapiKey);
+                      setShowApiConfig(false);
+                      alert('Clés sauvegardées ! Clique sur Actualiser pour tester.');
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "10px",
+                      background: "#00E0C0",
+                      border: "none",
+                      color: "#0a0a0a",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      fontFamily: "inherit"
+                    }}
+                  >
+                    Sauvegarder
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Modal Résumé Hebdo */}
+          {showWeeklySummary && (() => {
+            const STORAGE_KEY = "weeklySnapshot";
+            const THRESHOLD = 20;
+            const previousSnapshot = snapshotData;
+
+            // Construire le snapshot actuel
+            const buildCurrentSnapshot = () => {
+              const prices = {};
+              const ratios = {};
+              data.tradingPrix.forEach(row => {
+                const p = marketData[row.actif]?.price || yahooData[row.actif]?.price || staticMarketData[row.actif]?.price;
+                if (p) prices[row.actif] = p;
+              });
+              data.tradingRatios.forEach(row => {
+                const val = calculateRatioValueApp(row);
+                if (val !== null) ratios[row.ratio] = val;
+              });
+              return { date: new Date().toISOString(), prices, ratios };
+            };
+
+            const currentSnapshot = buildCurrentSnapshot();
+
+            const calcChange = (current, previous) => {
+              if (!previous || previous === 0) return null;
+              return ((current - previous) / previous) * 100;
+            };
+
+            const priceChanges = [];
+            const ratioChanges = [];
+
+            if (previousSnapshot) {
+              Object.entries(currentSnapshot.prices).forEach(([symbol, price]) => {
+                const prevPrice = previousSnapshot.prices?.[symbol];
+                const change = calcChange(price, prevPrice);
+                if (change !== null && Math.abs(change) >= THRESHOLD) {
+                  priceChanges.push({ symbol, current: price, previous: prevPrice, change });
+                }
+              });
+              priceChanges.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+
+              Object.entries(currentSnapshot.ratios).forEach(([ratio, value]) => {
+                const prevValue = previousSnapshot.ratios?.[ratio];
+                const change = calcChange(value, prevValue);
+                if (change !== null && Math.abs(change) >= THRESHOLD) {
+                  ratioChanges.push({ ratio, current: value, previous: prevValue, change });
+                }
+              });
+              ratioChanges.sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
+            }
+
+            const saveSnapshot = () => {
+              // Archiver les cibles atteintes dans le snapshot
+              const snapshotWithTargets = { ...currentSnapshot, reachedTargets: { ...reachedTargets } };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotWithTargets));
+              setSnapshotData(snapshotWithTargets);
+              // Reset reachedTargets pour la nouvelle semaine
+              localStorage.removeItem("reachedTargets");
+              setReachedTargets({});
+              alert("Snapshot enregistré ! Cibles atteintes réinitialisées.");
+            };
+
+            const saveAndClose = () => {
+              // Archiver les cibles atteintes dans le snapshot
+              const snapshotWithTargets = { ...currentSnapshot, reachedTargets: { ...reachedTargets } };
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotWithTargets));
+              setSnapshotData(snapshotWithTargets);
+              // Reset reachedTargets pour la nouvelle semaine
+              localStorage.removeItem("reachedTargets");
+              setReachedTargets({});
+              setShowWeeklySummary(false);
+            };
+
+            const resetSnapshot = () => {
+              if (confirm("Supprimer le snapshot précédent ?")) {
+                localStorage.removeItem(STORAGE_KEY);
+                setSnapshotData(null);
+              }
+            };
+
+            const formatDate = (isoStr) => {
+              if (!isoStr) return "—";
+              const d = new Date(isoStr);
+              return d.toLocaleDateString('fr-FR') + " " + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+            };
+
+            const reminders = [
+              { label: "WALCL", note: "Vérifier sur TradingView (Fed balance sheet)" },
+              { label: "Flux ETF", note: "farside.co.uk (BTC/ETH/SOL ETF flows)" },
+            ];
+
+            const clearReachedTargets = () => {
+              if (confirm("Vider les cibles atteintes ?")) {
+                localStorage.removeItem("reachedTargets");
+                setReachedTargets({});
+              }
+            };
+
+            return (
+              <div style={{
+                position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                background: "rgba(0, 0, 0, 0.85)",
+                display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000
+              }} onClick={() => setShowWeeklySummary(false)}>
+                <div style={{
+                  background: "#0a0a0a", border: "1px solid rgba(0, 224, 192, 0.4)",
+                  padding: 24, maxWidth: 750, width: "90%", maxHeight: "85vh", overflow: "auto", position: "relative"
+                }} onClick={e => e.stopPropagation()}>
+                  <button onClick={() => setShowWeeklySummary(false)} style={{
+                    position: "absolute", top: 12, right: 12, background: "none", border: "none", color: "#666", fontSize: 18, cursor: "pointer"
+                  }}>×</button>
+
+                  <h2 style={{ color: "#00E0C0", margin: "0 0 8px 0", fontSize: 16, fontWeight: 600 }}>◆ RÉSUMÉ HEBDOMADAIRE</h2>
+                  <div style={{ color: "#555", fontSize: 11, marginBottom: 16 }}>
+                    {previousSnapshot ? `Comparaison vs snapshot du ${formatDate(previousSnapshot.date)}` : "Aucun snapshot précédent"}
+                  </div>
+
+                  {previousSnapshot && (
+                    <>
+                      {/* VARIATIONS PRIX */}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ color: "#00E0C0", fontSize: 12, fontWeight: 600, marginBottom: 8, borderBottom: "1px solid #222", paddingBottom: 4 }}>
+                          VARIATIONS PRIX (≥{THRESHOLD}%)
+                        </div>
+                        {priceChanges.length === 0 ? (
+                          <div style={{ color: "#555", fontSize: 11, padding: 8 }}>Aucune variation significative</div>
+                        ) : priceChanges.map(({ symbol, current, previous, change }) => (
+                          <div key={symbol} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", borderBottom: "1px solid #1a1a1a" }}>
+                            <span style={{ color: "#888", fontSize: 11, minWidth: 60 }}>{symbol}</span>
+                            <span style={{ color: "#555", fontSize: 10 }}>${previous?.toLocaleString(undefined, {maximumFractionDigits: 2})} → ${current?.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                            <span style={{ color: change > 0 ? "#40F0D0" : "#ff6b35", fontSize: 11, fontWeight: 600, minWidth: 60, textAlign: "right" }}>
+                              {change > 0 ? "+" : ""}{change.toFixed(1)}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* VARIATIONS RATIOS */}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ color: "#00E0C0", fontSize: 12, fontWeight: 600, marginBottom: 8, borderBottom: "1px solid #222", paddingBottom: 4 }}>
+                          VARIATIONS RATIOS (≥{THRESHOLD}%)
+                        </div>
+                        {ratioChanges.length === 0 ? (
+                          <div style={{ color: "#555", fontSize: 11, padding: 8 }}>Aucune variation significative</div>
+                        ) : ratioChanges.map(({ ratio, current, previous, change }) => (
+                          <div key={ratio} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", borderBottom: "1px solid #1a1a1a" }}>
+                            <span style={{ color: "#888", fontSize: 11, minWidth: 80 }}>{ratio}</span>
+                            <span style={{ color: "#555", fontSize: 10 }}>{previous?.toFixed(2)} → {current?.toFixed(2)}</span>
+                            <span style={{ color: change > 0 ? "#40F0D0" : "#ff6b35", fontSize: 11, fontWeight: 600, minWidth: 60, textAlign: "right" }}>
+                              {change > 0 ? "+" : ""}{change.toFixed(1)}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* CIBLES ATTEINTES */}
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ color: "#40F0D0", fontSize: 12, fontWeight: 600, marginBottom: 8, borderBottom: "1px solid #222", paddingBottom: 4, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span>CIBLES ATTEINTES</span>
+                          {Object.keys(reachedTargets).length > 0 && (
+                            <button onClick={clearReachedTargets} style={{ background: "none", border: "none", color: "#ff6b35", fontSize: 10, cursor: "pointer" }}>✕ Vider</button>
+                          )}
+                        </div>
+                        {Object.keys(reachedTargets).length === 0 ? (
+                          <div style={{ color: "#555", fontSize: 11, padding: 8 }}>Aucune cible atteinte cette semaine</div>
+                        ) : Object.entries(reachedTargets).map(([key, data]) => (
+                          <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", borderBottom: "1px solid #1a1a1a" }}>
+                            <span style={{ color: data.direction === "IN" ? "#40F0D0" : "#ff6b35", fontSize: 11, fontWeight: 600 }}>
+                              ✓ {data.symbol} {data.direction} {data.level}/3
+                            </span>
+                            <span style={{ color: "#666", fontSize: 10 }}>
+                              {data.type === "prix" ? `$${data.price?.toLocaleString(undefined, {maximumFractionDigits: 2})}` : data.value?.toFixed(2)} → cible {data.target}
+                            </span>
+                            <span style={{ color: "#555", fontSize: 10 }}>
+                              {new Date(data.date).toLocaleDateString('fr-FR')}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* ÉVÉNEMENTS CALENDRIER */}
+                      {(() => {
+                        const snapshotDate = previousSnapshot?.date ? new Date(previousSnapshot.date) : null;
+                        const now = new Date();
+                        const passedEvents = snapshotDate ? data.calendrier.filter(event => {
+                          const specificMatch = event.date.match(/^(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+                          if (specificMatch) {
+                            const day = parseInt(specificMatch[1]);
+                            const month = MONTHS[specificMatch[2]];
+                            const year = parseInt(specificMatch[3]);
+                            if (month !== undefined) {
+                              const eventDate = new Date(year, month, day);
+                              return eventDate > snapshotDate && eventDate <= now;
+                            }
+                          }
+                          const rangeMatch = event.date.match(/^(\d{1,2})-(\d{1,2})\s+([A-Za-zÀ-ÿ]+)\s+(\d{4})$/);
+                          if (rangeMatch) {
+                            const day = parseInt(rangeMatch[2]);
+                            const month = MONTHS[rangeMatch[3]];
+                            const year = parseInt(rangeMatch[4]);
+                            if (month !== undefined) {
+                              const eventDate = new Date(year, month, day);
+                              return eventDate > snapshotDate && eventDate <= now;
+                            }
+                          }
+                          return false;
+                        }) : [];
+
+                        return (
+                          <div style={{ marginBottom: 16 }}>
+                            <div style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600, marginBottom: 8, borderBottom: "1px solid #222", paddingBottom: 4 }}>
+                              ÉVÉNEMENTS PASSÉS
+                            </div>
+                            {passedEvents.length === 0 ? (
+                              <div style={{ color: "#555", fontSize: 11, padding: 8 }}>Aucun événement depuis le dernier snapshot</div>
+                            ) : passedEvents.map((event, idx) => (
+                              <div key={idx} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 8px", borderBottom: "1px solid #1a1a1a" }}>
+                                <span style={{ color: "#f59e0b", fontSize: 11 }}>▸ {event.event}</span>
+                                <span style={{ color: "#666", fontSize: 10 }}>{event.date}</span>
+                                <span style={{ color: "#555", fontSize: 10, maxWidth: 200, overflow: "hidden", textOverflow: "ellipsis" }}>{event.signal}</span>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
+                      {/* SNAPSHOT PRÉCÉDENT */}
+                      <details style={{ marginBottom: 16 }}>
+                        <summary style={{ color: "#555", fontSize: 11, cursor: "pointer" }}>
+                          Voir snapshot précédent ({formatDate(previousSnapshot.date)})
+                        </summary>
+                        <div style={{ background: "#111", padding: 12, fontSize: 10, color: "#666", marginTop: 8 }}>
+                          <div style={{ marginBottom: 8 }}><strong>Prix:</strong></div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {Object.entries(previousSnapshot.prices || {}).map(([s, p]) => (
+                              <span key={s} style={{ marginRight: 8 }}>{s}: ${p?.toLocaleString(undefined, {maximumFractionDigits: 2})}</span>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: 8, marginBottom: 8 }}><strong>Ratios:</strong></div>
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {Object.entries(previousSnapshot.ratios || {}).map(([r, v]) => (
+                              <span key={r} style={{ marginRight: 8 }}>{r}: {v?.toFixed(2)}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </details>
+                    </>
+                  )}
+
+                  {/* RAPPELS */}
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ color: "#f59e0b", fontSize: 12, fontWeight: 600, marginBottom: 8, borderBottom: "1px solid #222", paddingBottom: 4 }}>
+                      RAPPELS MANUELS
+                    </div>
+                    {reminders.map((r, i) => (
+                      <div key={i} style={{ display: "flex", gap: 12, padding: "6px 8px", borderBottom: "1px solid #1a1a1a" }}>
+                        <span style={{ color: "#f59e0b", fontSize: 11, minWidth: 80 }}>▸ {r.label}</span>
+                        <span style={{ color: "#666", fontSize: 11 }}>{r.note}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* ACTIONS */}
+                  <div style={{ display: "flex", gap: 12, justifyContent: "space-between", alignItems: "center", borderTop: "1px solid #222", paddingTop: 16 }}>
+                    {previousSnapshot && (
+                      <button onClick={resetSnapshot} style={{
+                        background: "transparent", color: "#ff6b35", border: "1px solid #ff6b35",
+                        padding: "8px 12px", fontSize: 10, cursor: "pointer"
+                      }}>Réinitialiser</button>
+                    )}
+                    <div style={{ display: "flex", gap: 12, marginLeft: "auto" }}>
+                      <button onClick={() => setShowWeeklySummary(false)} style={{
+                        background: "transparent", color: "#666", border: "1px solid #333",
+                        padding: "8px 16px", fontSize: 11, cursor: "pointer"
+                      }}>Fermer</button>
+                      <button onClick={previousSnapshot ? saveAndClose : saveSnapshot} style={{
+                        background: "#00E0C0", color: "#000", border: "none",
+                        padding: "8px 16px", fontSize: 11, fontWeight: 600, cursor: "pointer"
+                      }}>{previousSnapshot ? "SAUVER SNAPSHOT" : "ENREGISTRER SNAPSHOT"}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </>
+      );
+    }
+
+    // ============================================
+    // RENDER
+    // ============================================
+
+    ReactDOM.render(<Dashboard />, document.getElementById('root'));
+  </script>
+</body>
+</html>
