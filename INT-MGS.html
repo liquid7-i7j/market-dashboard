@@ -691,6 +691,102 @@
         { platform: "Truc Solana", type: "DEX", metaux: "?", actions: "?", notes: "À vérifier" },
       ],
 
+      // ============================================
+      // ONCHAIN ANALYTICS - Whale tracking & flows
+      // ============================================
+      onchainAnalytics: {
+        // Coins à tracker (ajouter ici pour apparaître dans l'onglet)
+        trackedCoins: [
+          {
+            symbol: "BTC",
+            name: "Bitcoin",
+            richListUrl: "bitinfocharts.com/top-100-richest-bitcoin-addresses.html",
+            arkhamUrl: "arkham.ai",
+            explorerUrl: "mempool.space",
+            exchangeReserve: { trend: "declining", signal: "bullish", note: "Multi-year lows" },
+            whaleActivity: { status: "accumulating", note: "ETF inflows continue" },
+            networkHealth: { activeAddresses: "stable", txCount: "rising", note: "Healthy" }
+          },
+          {
+            symbol: "ETH",
+            name: "Ethereum",
+            richListUrl: "etherscan.io/accounts",
+            arkhamUrl: "arkham.ai",
+            explorerUrl: "etherscan.io",
+            exchangeReserve: { trend: "flat", signal: "neutre", note: "Stable" },
+            whaleActivity: { status: "neutral", note: "Mixed signals" },
+            networkHealth: { activeAddresses: "stable", txCount: "stable", note: "L2 activity rising" }
+          },
+          {
+            symbol: "BCH",
+            name: "Bitcoin Cash",
+            richListUrl: "bitinfocharts.com/top-100-richest-bitcoin%20cash-addresses.html",
+            arkhamUrl: "arkham.ai",
+            explorerUrl: "blockchair.com/bitcoin-cash",
+            exchangeReserve: { trend: "declining", signal: "bullish", note: "À vérifier" },
+            whaleActivity: { status: "unknown", note: "Limited Arkham coverage" },
+            networkHealth: { activeAddresses: "stable", txCount: "stable", note: "CashVM upgrade May 2026" }
+          },
+          {
+            symbol: "SOL",
+            name: "Solana",
+            richListUrl: "solscan.io",
+            arkhamUrl: "arkham.ai",
+            explorerUrl: "solscan.io",
+            exchangeReserve: { trend: "rising", signal: "bearish", note: "Distribution signs" },
+            whaleActivity: { status: "distributing", note: "VC unlocks ongoing" },
+            networkHealth: { activeAddresses: "declining", txCount: "declining", note: "Post-meme fatigue" }
+          },
+          {
+            symbol: "XMR",
+            name: "Monero",
+            richListUrl: "N/A (privacy)",
+            arkhamUrl: "N/A (privacy)",
+            explorerUrl: "localmonero.co/blocks",
+            exchangeReserve: { trend: "unknown", signal: "neutre", note: "Privacy coin - no data" },
+            whaleActivity: { status: "unknown", note: "Not trackable by design" },
+            networkHealth: { activeAddresses: "unknown", txCount: "stable", note: "Strong privacy guarantees" }
+          },
+          {
+            symbol: "HYPE",
+            name: "Hyperliquid",
+            richListUrl: "hypurrscan.io/holders",
+            arkhamUrl: "arkham.ai",
+            explorerUrl: "hypurrscan.io",
+            exchangeReserve: { trend: "unknown", signal: "neutre", note: "Native token, check Hypurrscan" },
+            whaleActivity: { status: "unknown", note: "Track team/insider wallets" },
+            networkHealth: { activeAddresses: "rising", txCount: "rising", note: "Perps volume leader" }
+          }
+        ],
+        // Sources de données gratuites
+        dataSources: [
+          { name: "Arkham", url: "arkham.ai", type: "Wallet labels, entity tracking", free: true },
+          { name: "Dune Analytics", url: "dune.com", type: "Custom SQL queries", free: true },
+          { name: "DefiLlama", url: "defillama.com", type: "TVL, stablecoins, bridges", free: true },
+          { name: "Whale Alert", url: "whale-alert.io", type: "Large transaction alerts", free: true },
+          { name: "BitInfoCharts", url: "bitinfocharts.com", type: "Rich lists, network stats", free: true },
+          { name: "Blockchair", url: "blockchair.com", type: "Multi-chain explorer", free: true },
+          { name: "Glassnode", url: "glassnode.com", type: "On-chain metrics", free: false },
+          { name: "CryptoQuant", url: "cryptoquant.com", type: "Exchange flows", free: false },
+        ],
+        // Notes et observations
+        notes: "Données manuelles pour l'instant. Utiliser Arkham pour identifier les wallets, Dune pour les métriques custom, DefiLlama pour les flux stablecoins."
+      },
+
+      // ============================================
+      // RESEARCH REPORTS - Generated via /research command
+      // ============================================
+      research: {
+        // Placeholder for research reports - will be populated by /research command
+        // Reports are saved to C:\Users\LucSa\Documents\CC\research\[SYMBOL]_[DATE].md
+        reports: [
+          // Example structure (add manually or via future automation):
+          // { symbol: "BCH", date: "2026-01-17", bias: "bullish", confidence: "high", summary: "...", file: "BCH_2026-01-17.md" }
+        ],
+        howToUse: "Run '/research BCH' or '/research HYPE' in Claude Code to generate a comprehensive report. Reports are saved to /research folder.",
+        lastGenerated: null
+      },
+
       notesITC: [
         { indicateur: "Social Risk", description: "Mesure intérêt retail (YT, Twitter)", utilite: "Identifier tops de cycle", alternative: "Simplified Risk Metric" },
         { indicateur: "Bitcoin Risk Metric", description: "Niveau de risque BTC 0-1", utilite: "Zones accumulation/distribution", alternative: "Simplified Risk Metric" },
@@ -1639,6 +1735,181 @@
       </>
     );
 
+    // ============================================
+    // TAB ONCHAIN ANALYTICS - Whale tracking
+    // ============================================
+    const TabOnchainAnalytics = () => {
+      const getSignalColor = (signal) => {
+        if (signal === "bullish") return "#8DECB0";
+        if (signal === "bearish") return "#ff6b35";
+        return "#666";
+      };
+
+      const getTrendIcon = (trend) => {
+        if (trend === "declining") return "↓";
+        if (trend === "rising") return "↑";
+        if (trend === "flat" || trend === "stable") return "→";
+        return "?";
+      };
+
+      const getStatusColor = (status) => {
+        if (status === "accumulating") return "#8DECB0";
+        if (status === "distributing") return "#ff6b35";
+        if (status === "neutral" || status === "stable") return "#666";
+        return "#444";
+      };
+
+      return (
+        <>
+          <div className="corner-box">
+            <div style={{ padding: "16px 20px", color: "#888", fontSize: 13, borderBottom: "1px solid rgba(109, 227, 160, 0.05)" }}>
+              {data.onchainAnalytics.notes}
+            </div>
+
+            {/* Tracked Coins Section */}
+            <div style={{ padding: "8px 20px", color: "#6de3a0", fontSize: 11, textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid rgba(109, 227, 160, 0.1)" }}>
+              Coins Trackés
+            </div>
+
+            <div className="onchain-analytics-header">
+              <span>Coin</span>
+              <span>Exchange Reserve</span>
+              <span>Whale Activity</span>
+              <span>Network Health</span>
+              <span>Links</span>
+            </div>
+
+            {data.onchainAnalytics.trackedCoins.map((coin, i) => (
+              <div key={i} className="onchain-analytics-row">
+                <span className="row-label" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <AssetIcon symbol={coin.symbol} size={18} />
+                  <span style={{ color: "#888", textTransform: "uppercase" }}>{coin.symbol}</span>
+                </span>
+
+                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ color: getSignalColor(coin.exchangeReserve.signal), fontSize: 13 }}>
+                    {getTrendIcon(coin.exchangeReserve.trend)} {coin.exchangeReserve.trend}
+                  </span>
+                  <span style={{ color: "#555", fontSize: 11 }}>{coin.exchangeReserve.note}</span>
+                </span>
+
+                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ color: getStatusColor(coin.whaleActivity.status), fontSize: 13 }}>
+                    {coin.whaleActivity.status}
+                  </span>
+                  <span style={{ color: "#555", fontSize: 11 }}>{coin.whaleActivity.note}</span>
+                </span>
+
+                <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ color: "#888", fontSize: 13 }}>
+                    Addr: {coin.networkHealth.activeAddresses} | Tx: {coin.networkHealth.txCount}
+                  </span>
+                  <span style={{ color: "#555", fontSize: 11 }}>{coin.networkHealth.note}</span>
+                </span>
+
+                <span style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 11 }}>
+                  {coin.richListUrl !== "N/A (privacy)" && (
+                    <a href={`https://${coin.richListUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", textDecoration: "none" }}>
+                      Rich List ↗
+                    </a>
+                  )}
+                  {coin.explorerUrl !== "N/A (privacy)" && (
+                    <a href={`https://${coin.explorerUrl}`} target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", textDecoration: "none" }}>
+                      Explorer ↗
+                    </a>
+                  )}
+                </span>
+              </div>
+            ))}
+
+            {/* Data Sources Section */}
+            <div style={{ padding: "8px 20px", marginTop: 16, color: "#6de3a0", fontSize: 11, textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid rgba(109, 227, 160, 0.1)", borderTop: "1px solid rgba(109, 227, 160, 0.1)" }}>
+              Sources de Données
+            </div>
+
+            <div className="data-sources-header">
+              <span>Source</span>
+              <span>Type</span>
+              <span>Accès</span>
+              <span>Lien</span>
+            </div>
+
+            {data.onchainAnalytics.dataSources.map((source, i) => (
+              <div key={i} className="data-sources-row">
+                <span className="row-label" style={{ color: source.free ? "#6de3a0" : "#888" }}>{source.name}</span>
+                <span style={{ color: "#888", fontSize: 13 }}>{source.type}</span>
+                <span style={{ color: source.free ? "#8DECB0" : "#ff6b35", fontSize: 12 }}>
+                  {source.free ? "GRATUIT" : "PREMIUM"}
+                </span>
+                <a href={`https://${source.url}`} target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", fontSize: 12, textDecoration: "none" }}>
+                  {source.url} ↗
+                </a>
+              </div>
+            ))}
+
+            {/* Monitoring Checklist */}
+            <div style={{ padding: "8px 20px", marginTop: 16, color: "#6de3a0", fontSize: 11, textTransform: "uppercase", letterSpacing: "1px", borderBottom: "1px solid rgba(109, 227, 160, 0.1)", borderTop: "1px solid rgba(109, 227, 160, 0.1)" }}>
+              Routine de Monitoring (jusqu'au bot Telegram)
+            </div>
+
+            <div style={{ padding: "16px 20px" }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 8 }}>DAILY</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <a href="https://twitter.com/whale_alert" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ Check @whale_alert (transactions > $10M)
+                  </a>
+                  <a href="https://coinglass.com/LiquidationData" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ Coinglass liquidation heatmap (BTC, ETH, SOL)
+                  </a>
+                  <a href="https://farside.co.uk/btc/" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ ETF flows (farside.co.uk)
+                  </a>
+                </div>
+              </div>
+
+              <div>
+                <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 8 }}>WEEKLY</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <a href="https://cryptoquant.com/asset/btc/chart/exchange-flows/exchange-reserve" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ Exchange reserves trend (CryptoQuant free charts)
+                  </a>
+                  <a href="https://defillama.com/stablecoins" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ Stablecoin supply (DefiLlama)
+                  </a>
+                  <a href="https://bitinfocharts.com/top-100-richest-bitcoin-addresses.html" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ Rich list changes (BitInfoCharts)
+                  </a>
+                  <a href="https://www.blockchain.com/explorer/charts/hash-rate" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ Hash rate (BTC/BCH)
+                  </a>
+                  <a href="https://defillama.com" target="_blank" rel="noopener noreferrer" style={{ color: "#888", fontSize: 12, textDecoration: "none" }}>
+                    □ DeFi TVL trends
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Links */}
+            <div style={{ padding: "16px 20px", marginTop: 8, borderTop: "1px solid rgba(109, 227, 160, 0.1)", display: "flex", gap: 16, flexWrap: "wrap" }}>
+              <span style={{ color: "#666", fontSize: 12 }}>Quick Links:</span>
+              <a href="https://twitter.com/whale_alert" target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", fontSize: 12, textDecoration: "none" }}>@whale_alert</a>
+              <a href="https://defillama.com/stablecoins" target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", fontSize: 12, textDecoration: "none" }}>Stablecoins</a>
+              <a href="https://defillama.com" target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", fontSize: 12, textDecoration: "none" }}>TVL</a>
+              <a href="https://coinglass.com/LiquidationData" target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", fontSize: 12, textDecoration: "none" }}>Liquidations</a>
+              <a href="https://farside.co.uk/btc/" target="_blank" rel="noopener noreferrer" style={{ color: "#6de3a0", fontSize: 12, textDecoration: "none" }}>ETF Flows</a>
+            </div>
+
+            {/* Bot Status */}
+            <div style={{ padding: "12px 20px", borderTop: "1px solid rgba(109, 227, 160, 0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "#555", fontSize: 11 }}>Telegram Bot Status:</span>
+              <span style={{ color: "#ff6b35", fontSize: 11 }}>NOT IMPLEMENTED - See quant/bots/monitor/SPEC.md</span>
+            </div>
+          </div>
+        </>
+      );
+    };
+
     const TabNotes = () => (
       <>
         <div className="corner-box">
@@ -1700,6 +1971,116 @@
       </div>
       </>
     );
+
+    // ============================================
+    // TAB RESEARCH - Research reports hub
+    // ============================================
+    const TabResearch = () => {
+      const hasReports = data.research.reports && data.research.reports.length > 0;
+
+      return (
+        <>
+          <div className="corner-box">
+            <div style={{ padding: "16px 20px", color: "#888", fontSize: 13, borderBottom: "1px solid rgba(109, 227, 160, 0.05)" }}>
+              {data.research.howToUse}
+            </div>
+
+            {/* How to generate reports */}
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(109, 227, 160, 0.1)" }}>
+              <div style={{ color: "#6de3a0", fontSize: 11, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+                Générer un Rapport
+              </div>
+              <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                <div style={{ background: "rgba(109, 227, 160, 0.1)", padding: "8px 16px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, color: "#6de3a0" }}>
+                  /research BCH
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.1)", padding: "8px 16px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, color: "#6de3a0" }}>
+                  /research HYPE
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.1)", padding: "8px 16px", borderRadius: 4, fontFamily: "monospace", fontSize: 13, color: "#6de3a0" }}>
+                  /research BTC
+                </div>
+              </div>
+              <div style={{ color: "#555", fontSize: 12, marginTop: 8 }}>
+                Exécuter dans Claude Code pour générer un rapport complet (TA + Onchain + Fundamentals + News)
+              </div>
+            </div>
+
+            {/* Report coverage */}
+            <div style={{ padding: "16px 20px", borderBottom: "1px solid rgba(109, 227, 160, 0.1)" }}>
+              <div style={{ color: "#6de3a0", fontSize: 11, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+                Couverture du Rapport
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                <div style={{ background: "rgba(109, 227, 160, 0.05)", padding: 12, border: "1px solid rgba(109, 227, 160, 0.1)" }}>
+                  <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 4 }}>Technical Analysis</div>
+                  <div style={{ color: "#666", fontSize: 11 }}>Structure, patterns, liquidations, levels</div>
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.05)", padding: 12, border: "1px solid rgba(109, 227, 160, 0.1)" }}>
+                  <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 4 }}>On-Chain Analysis</div>
+                  <div style={{ color: "#666", fontSize: 11 }}>Whales, exchange flows, network health</div>
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.05)", padding: 12, border: "1px solid rgba(109, 227, 160, 0.1)" }}>
+                  <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 4 }}>Fundamentals</div>
+                  <div style={{ color: "#666", fontSize: 11 }}>Tokenomics, team, development</div>
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.05)", padding: 12, border: "1px solid rgba(109, 227, 160, 0.1)" }}>
+                  <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 4 }}>Sentiment & Narrative</div>
+                  <div style={{ color: "#666", fontSize: 11 }}>CT sentiment, social risk, narrative</div>
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.05)", padding: 12, border: "1px solid rgba(109, 227, 160, 0.1)" }}>
+                  <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 4 }}>News & Catalysts</div>
+                  <div style={{ color: "#666", fontSize: 11 }}>Recent news, upcoming events</div>
+                </div>
+                <div style={{ background: "rgba(109, 227, 160, 0.05)", padding: 12, border: "1px solid rgba(109, 227, 160, 0.1)" }}>
+                  <div style={{ color: "#6de3a0", fontSize: 12, marginBottom: 4 }}>Trade Setup</div>
+                  <div style={{ color: "#666", fontSize: 11 }}>Entry, targets, stop, invalidation</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Generated reports list */}
+            <div style={{ padding: "16px 20px" }}>
+              <div style={{ color: "#6de3a0", fontSize: 11, textTransform: "uppercase", letterSpacing: "1px", marginBottom: 12 }}>
+                Rapports Générés
+              </div>
+              {hasReports ? (
+                <div className="research-reports-list">
+                  {data.research.reports.map((report, i) => (
+                    <div key={i} className="research-report-row">
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <AssetIcon symbol={report.symbol} size={18} />
+                        <span style={{ color: "#888", fontWeight: 600 }}>{report.symbol}</span>
+                      </span>
+                      <span style={{ color: "#666", fontSize: 12 }}>{report.date}</span>
+                      <span style={{
+                        color: report.bias === "bullish" ? "#8DECB0" : report.bias === "bearish" ? "#ff6b35" : "#666",
+                        fontSize: 12,
+                        textTransform: "uppercase"
+                      }}>
+                        {report.bias}
+                      </span>
+                      <span style={{ color: "#555", fontSize: 12 }}>{report.summary}</span>
+                      <span style={{ color: "#6de3a0", fontSize: 11 }}>{report.file}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ color: "#555", fontSize: 13, fontStyle: "italic", padding: "20px 0", textAlign: "center" }}>
+                  Aucun rapport généré. Utilisez /research [SYMBOL] pour créer un rapport.
+                </div>
+              )}
+            </div>
+
+            {/* Output location */}
+            <div style={{ padding: "16px 20px", borderTop: "1px solid rgba(109, 227, 160, 0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "#666", fontSize: 12 }}>Output:</span>
+              <span style={{ color: "#6de3a0", fontSize: 12, fontFamily: "monospace" }}>C:\Users\LucSa\Documents\CC\research\</span>
+            </div>
+          </div>
+        </>
+      );
+    };
 
     // Composant AlertTicker - affichage statique
     // Couleurs IN: vert=atteint, jaune=proche | OUT: rouge=atteint, orange=proche
@@ -2784,6 +3165,29 @@
       .onchain-row { padding: 14px 20px; border-bottom: 1px solid rgba(109, 227, 160, 0.05); }
       .onchain-row:hover { background: rgba(109, 227, 160, 0.03); }
 
+      /* Onchain Analytics Tab Styles */
+      .onchain-analytics-header, .onchain-analytics-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 1fr 1fr 120px;
+        padding: 12px 20px;
+        align-items: start;
+        gap: 16px;
+      }
+      .onchain-analytics-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .onchain-analytics-row { padding: 14px 20px; border-bottom: 1px solid rgba(109, 227, 160, 0.05); }
+      .onchain-analytics-row:hover { background: rgba(109, 227, 160, 0.03); }
+
+      .data-sources-header, .data-sources-row {
+        display: grid;
+        grid-template-columns: 120px 1fr 100px 200px;
+        padding: 12px 20px;
+        align-items: center;
+        gap: 16px;
+      }
+      .data-sources-header { font-size: 11px; font-weight: 600; color: var(--chrome-dim); border-bottom: 1px solid var(--chrome-border); text-transform: uppercase; }
+      .data-sources-row { padding: 10px 20px; border-bottom: 1px solid rgba(109, 227, 160, 0.05); }
+      .data-sources-row:hover { background: rgba(109, 227, 160, 0.03); }
+
       .trading-grid {
         display: flex;
         flex-direction: column;
@@ -3074,8 +3478,10 @@
         { id: "actifs", label: "Actifs" },
         { id: "macro", label: "Paramètres ET Ratios" },
         { id: "calendrier", label: "Calendrier" },
+        { id: "research", label: "Research" },
         { id: "secteurs", label: "Secteurs" },
         { id: "defi", label: "DeFi" },
+        { id: "onchainAnalytics", label: "Onchain Analytics" },
         { id: "onchain", label: "Actions ET Métaux Onchain" },
         { id: "notes", label: "Notes ITC" },
         { id: "bots", label: "Statut Bots" },
@@ -3092,8 +3498,10 @@
           case "macro": return <TabMacro />;
           case "actifs": return <TabActifs marketData={marketData} yahooData={yahooData} isLoading={isLoading} onRefresh={loadMarketData} lastUpdate={lastUpdate} />;
           case "trading": return <TabTrading marketData={marketData} yahooData={yahooData} technicalIndicators={technicalIndicators} />;
+          case "research": return <TabResearch />;
           case "secteurs": return <TabSecteurs />;
           case "defi": return <TabDeFi />;
+          case "onchainAnalytics": return <TabOnchainAnalytics />;
           case "onchain": return <TabOnchain />;
           case "notes": return <TabNotes />;
           case "bots": return <TabBots />;
