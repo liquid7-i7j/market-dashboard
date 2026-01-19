@@ -59,19 +59,19 @@
       }
     };
 
-    // Corrections CoinGecko (données incorrectes - source: CoinGecko 14/01/2026)
+    // Corrections CoinGecko (données incorrectes - source: CoinGecko 19/01/2026)
     // mcapMultiplier: facteur correctif pour le mcap (1.0 = pas de correction)
     // rankOffset: valeur à soustraire du rang CG pour approcher le rang CMC
     const cgCorrections = {
-      "XMR":   { mcapMultiplier: 1.0, rankOffset: 2 },   // CG 13 → CMC 11
-      "BCH":   { mcapMultiplier: 1.0, rankOffset: 6 },   // CG 18 → CMC 12
-      "LINK":  { mcapMultiplier: 1.0, rankOffset: 7 },   // CG 20 → CMC 13
-      "HYPE":  { mcapMultiplier: 1.254, rankOffset: 16 }, // CG 31 → CMC 15, mcap 6.3B → 7.9B
-      "AAVE":  { mcapMultiplier: 1.0, rankOffset: 16 },  // CG 51 → CMC 35
-      "ASTER": { mcapMultiplier: 1.0, rankOffset: 21 },  // CG 66 → CMC 45
-      "PUMP":  { mcapMultiplier: 0.60, rankOffset: 2 },  // CG 73 → CMC 71, mcap -40%
-      "KAS":   { mcapMultiplier: 1.0, rankOffset: 44 },  // CG ~100 → CMC 56
-      "LIT":   { mcapMultiplier: 1.0, rankOffset: 59 }   // CG 150 → CMC 91
+      "XMR":   { mcapMultiplier: 1.0, rankOffset: 6 },    // CG 18 → CMC 12
+      "BCH":   { mcapMultiplier: 1.0, rankOffset: 5 },    // CG 16 → CMC 11
+      "LINK":  { mcapMultiplier: 1.0, rankOffset: 8 },    // CG 21 → CMC 13
+      "HYPE":  { mcapMultiplier: 1.27, rankOffset: 15 },  // CG 30 → CMC 15, mcap 5.68B → 7.2B
+      "AAVE":  { mcapMultiplier: 1.0, rankOffset: 15 },   // CG 51 → CMC 36
+      "ASTER": { mcapMultiplier: 0.89, rankOffset: 16 },  // CG 62 → CMC 46, mcap 1.8B → 1.6B
+      "PUMP":  { mcapMultiplier: 0.87, rankOffset: -3 },  // CG 68 → CMC 71, mcap 1.0B → 0.87B
+      "KAS":   { mcapMultiplier: 1.0, rankOffset: 34 },   // CG 91 → CMC 57
+      "LIT":   { mcapMultiplier: 0.9, rankOffset: 56 }    // CG 154 → CMC 98, mcap 0.5B → 0.45B
     };
 
     // ============================================
@@ -405,7 +405,7 @@
       },
       "ETH": {
         status: "bearish",
-        signal: "Suit BTC, support ~2k",
+        signal: "Fondamentaux solides mais crypto bearish",
         m: "bearish", h: "neutre", j: "neutre",
         ticker: "ETHUSD", type: "Crypto", secteur: "POS L1",
         category: "actif", importance: "haute"
@@ -415,11 +415,11 @@
       // MACRO - Paramètres macro-économiques
       // ============================================
       "WALCL": { status: "bullish", signal: "QT terminé, stealth QE = légèrement bullish", ticker: "FRED:WALCL", category: "macro", importance: "haute" },
-      "DXY": { status: "neutre", signal: "Analyser", ticker: "TVC:DXY", category: "macro", importance: "moyenne" },
+      "DXY": { status: "neutre", signal: "Aucune idée, analyser macro?", ticker: "TVC:DXY", category: "macro", importance: "moyenne" },
       "SPX": { status: "neutre", signal: "Lier au dashboard", ticker: "SP:SPX", category: "macro", importance: "moyenne" },
       "NASDAQ": { status: "neutre", signal: "Lier au dashboard", ticker: "NASDAQ:NDX", category: "macro", importance: "basse" },
       "SPY/RSP": { status: "neutre", signal: "Top 10 = 40% du S&P, tendance bullish mais niveaux premium", ticker: "SPY/RSP", category: "macro", importance: "basse" },
-      "EUR/USD": { status: "neutre", signal: "Analyser", ticker: "FX:EURUSD", category: "macro", importance: "basse" },
+      "EUR/USD": { status: "neutre", signal: "Aucune idée, analyser macro?", ticker: "FX:EURUSD", category: "macro", importance: "basse" },
 
       // ============================================
       // RATIOS - Ratios entre actifs
@@ -427,11 +427,17 @@
       "GOLD/SPX": { status: "bullish", signal: "Cup & handle D/W, résistance ou poussée puis fin bullrun métaux", ticker: "GOLDUSD/SPX", category: "ratio", importance: "moyenne" },
       "BTC/GOLD": { status: "bearish", signal: "Distribution confirmée. Supports 16 13 9", ticker: "BTCUSD/GOLDUSD", category: "ratio", importance: "moyenne" },
       "BTC/SPX": { status: "neutre", signal: "Supports 1000 900 740", ticker: "BTCUSD/SPX", category: "ratio", importance: "moyenne" },
-      "ETH/BTC": { status: "neutre", signal: "Structure baissière, pas de catalyseur ETH", ticker: "ETHBTC", category: "ratio", importance: "haute" },
+      "ETH/BTC": { status: "neutre", signal: "ETH solide mais pas d'alt saison", ticker: "ETHBTC", category: "ratio", importance: "haute" },
+      "SOL/BTC": { status: "bearish", signal: "Pas d'alt saison", ticker: "SOLUSD/BTCUSD", category: "ratio", importance: "moyenne" },
+      "SOL/ETH": { status: "bearish", signal: "Bearish, sans commentaire", ticker: "SOLUSD/ETHUSD", category: "ratio", importance: "moyenne" },
+      "BCH/BTC": { status: "bullish", signal: "Uptrend, support à 0.0052", ticker: "BCHUSD/BTCUSD", category: "ratio", importance: "moyenne" },
+      "BCH/ETH": { status: "bullish", signal: "Latéralise UP après des années de downtrend", ticker: "BCHUSD/ETHUSD", category: "ratio", importance: "moyenne" },
+      "BCH/SOL": { status: "bullish", signal: "Ressemble à GOLD/BTC, uptrend", ticker: "BCHUSD/SOLUSD", category: "ratio", importance: "moyenne" },
+      "XMR/BTC": { status: "bullish", signal: "Break descending wedge mais en surchauffe, gros risque", ticker: "XMRUSD/BTCUSD", category: "ratio", importance: "moyenne" },
       "HYPE/BTC": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/BTCUSD", category: "ratio", importance: "moyenne" },
       "HYPE/ETH": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/ETHUSD", category: "ratio", importance: "moyenne" },
       "HYPE/SOL": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/SOLUSD", category: "ratio", importance: "moyenne" },
-      "BCH/BTC": { status: "bullish", signal: "Uptrend, support à 0.0052", ticker: "BCHUSD/BTCUSD", category: "ratio", importance: "moyenne" },
+      "HYPE/BCH": { status: "neutre", signal: "Retour en bas", ticker: "HYPEUSD/BCHUSD", category: "ratio", importance: "moyenne" },
 
       // ============================================
       // FLUX CRYPTO - Dominance et flux
@@ -467,8 +473,6 @@
       "PUMP": "https://s2.coinmarketcap.com/static/img/coins/64x64/36507.png",
       "ASTER": "https://s2.coinmarketcap.com/static/img/coins/64x64/36341.png",
       "BCH": "https://s2.coinmarketcap.com/static/img/coins/64x64/1831.png",
-      "DOGE": "https://s2.coinmarketcap.com/static/img/coins/64x64/74.png",
-
       // Actions - via companiesmarketcap.com
       "NVDA": "https://companiesmarketcap.com/img/company-logos/64/NVDA.png",
       "AAPL": "https://companiesmarketcap.com/img/company-logos/64/AAPL.png",
@@ -525,8 +529,8 @@
         { param: "BTC/SPX", ...getParam("BTC/SPX") },
         { param: "STABLES.D", ...getParam("STABLES.D") },
         { param: "BTC.D", ...getParam("BTC.D") },
-        { param: "ETH/BTC", ...getParam("ETH/BTC") },
         { param: "ALTS/BTC", ...getParam("ALTS/BTC") },
+        { param: "ETH/BTC", ...getParam("ETH/BTC") },
         { param: "SOCIAL RISK", ...getParam("SOCIAL RISK") },
       ],
 
@@ -617,12 +621,18 @@
         { param: "GOLD/SPX", ...getParam("GOLD/SPX"), notes: "Risk-on vs risk-off" },
         { param: "BTC/GOLD", ...getParam("BTC/GOLD"), notes: "Digital gold thesis" },
         { param: "BTC/SPX", ...getParam("BTC/SPX"), notes: "Crypto vs equity" },
-        { param: "ETH/BTC", ...getParam("ETH/BTC"), notes: "Ratio bas historique ~0.035" },
-        { param: "BCH/BTC", ...getParam("BCH/BTC"), notes: "BCH vs BTC" },
         { param: "ALTS/BTC", ...getParam("ALTS/BTC"), notes: "Alts hors ETH vs BTC" },
+        { param: "ETH/BTC", ...getParam("ETH/BTC"), notes: "Ratio bas historique ~0.035" },
+        { param: "SOL/BTC", ...getParam("SOL/BTC"), notes: "SOL vs BTC" },
+        { param: "SOL/ETH", ...getParam("SOL/ETH"), notes: "SOL vs ETH" },
+        { param: "BCH/BTC", ...getParam("BCH/BTC"), notes: "BCH vs BTC" },
+        { param: "BCH/ETH", ...getParam("BCH/ETH"), notes: "BCH vs ETH" },
+        { param: "BCH/SOL", ...getParam("BCH/SOL"), notes: "BCH vs SOL" },
+        { param: "XMR/BTC", ...getParam("XMR/BTC"), notes: "XMR vs BTC" },
         { param: "HYPE/BTC", ...getParam("HYPE/BTC"), notes: "HYPE vs BTC" },
         { param: "HYPE/ETH", ...getParam("HYPE/ETH"), notes: "HYPE vs ETH" },
         { param: "HYPE/SOL", ...getParam("HYPE/SOL"), notes: "HYPE vs SOL" },
+        { param: "HYPE/BCH", ...getParam("HYPE/BCH"), notes: "HYPE vs BCH, pivot 0.044" },
       ],
 
       sentiment: [
@@ -652,7 +662,7 @@
         { actif: "ETH", type: getParam("ETH").type, secteur: getParam("ETH").secteur, status: getParam("ETH").status, signal: getParam("ETH").signal, cible: "", ticker: getParam("ETH").ticker, notes: "" },
         { actif: "SOL", type: "Crypto", secteur: "POS L1", status: "bearish", signal: "Bulltards absorbed", cible: "", ticker: "SOLUSD", notes: "" },
         { actif: "LINK", type: "Crypto", secteur: "RWA", status: "bearish", signal: "Sur support, problème revenus", cible: "", ticker: "LINKUSD", notes: "Chainlink" },
-        { actif: "XMR", type: "Crypto", secteur: "Privacy", status: "bullish", signal: "Explosé, prévisible...", cible: "", ticker: "XMRUSD", notes: "Monero" },
+        { actif: "XMR", type: "Crypto", secteur: "Privacy", status: "bullish", signal: "Trend bullish mais surchauffe, rentrer sur dips mais risque", cible: "", ticker: "XMRUSD", notes: "Monero" },
         { actif: "HYPE", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Pas encore, BTC/ETH/SOL", cible: "", ticker: "HYPEUSD", notes: "Hyperliquid" },
         { actif: "AAVE", type: "Crypto", secteur: "DeFi", status: "bearish", signal: "Sur support, problème revenus", cible: "", ticker: "AAVEUSD", notes: "" },
         { actif: "ASTER", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Niveaux intéressants mais situation crypto", cible: "", ticker: "ASTERUSD", notes: "asterdex.com" },
@@ -660,7 +670,6 @@
         { actif: "KAS", type: "Crypto", secteur: "POW L1", status: "bearish", signal: "Désintérêt, tente quelque chose en D, un jour re-IN", cible: "", ticker: "KASUSD", notes: "Kaspa" },
         { actif: "LIT", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Niveaux intéressants mais situation crypto", cible: "", ticker: "LITUSD", notes: "Lighter" },
         { actif: "BCH", type: "Crypto", secteur: "POW L1", status: "bullish", signal: "Log M breakout et retest", cible: "", ticker: "BCHUSD", notes: "Bitcoin Cash" },
-        { actif: "DOGE", type: "Crypto", secteur: "POW Meme", status: "neutre", signal: "OG meme, fair launch, observer", cible: "", ticker: "DOGEUSD", notes: "Dogecoin" },
       ],
 
       defi: [
@@ -798,17 +807,16 @@
       tradingPrix: [
         { actif: "BTC", targetIn: [74000, 60000, null], targetOut: [98000, 105000, null], invalidation: null },
         { actif: "ETH", targetIn: [2000, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "SOL", targetIn: [80, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "XMR", targetIn: [450, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "SOL", targetIn: [80, 50, 40], targetOut: [null, null, null], invalidation: null },
+        { actif: "XMR", targetIn: [520, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "BCH", targetIn: [550, 480, 450], targetOut: [1800, 2800, 4000], invalidation: 450 },
         { actif: "HYPE", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "AAVE", targetIn: [75, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "LINK", targetIn: [7.8, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "KAS", targetIn: [0.032, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "KAS", targetIn: [0.032, 0.02, 0.015], targetOut: [null, null, null], invalidation: null },
         { actif: "PUMP", targetIn: [0.0015, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "LIT", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "ASTER", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "DOGE", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "GOLD", targetIn: [4400, null, null], targetOut: [5000, null, null], invalidation: null },
       ],
 
@@ -820,14 +828,22 @@
         { ratio: "BTC/GOLD", numerator: "BTC", denominator: "GOLD", targetIn: [16, 13, 9], targetOut: [22, null, null], invalidation: null },
         { ratio: "BTC/SPX", numerator: "BTC", denominator: "SPX", multiplier: 100, targetIn: [1000, 900, 740], targetOut: [null, null, null], invalidation: null },
         { ratio: "BTC.D", type: "dominance", numerator: "BTC", targetIn: [null, null, null], targetOut: [72, null, null], invalidation: null },
-        // Alts
-        { ratio: "ETH/BTC", numerator: "ETH", denominator: "BTC", targetIn: [0.026, 0.024, 0.017], targetOut: [null, null, null], invalidation: null },
-        { ratio: "BCH/BTC", numerator: "BCH", denominator: "BTC", targetIn: [0.00568, 0.0055, 0.00522], targetOut: [null, null, null], invalidation: null },
+        // Alts vs BTC
         { ratio: "ALTS/BTC", type: "alts", targetIn: [26, null, null], targetOut: [44.75, null, null], invalidation: null },
+        { ratio: "ETH/BTC", numerator: "ETH", denominator: "BTC", targetIn: [0.026, 0.024, 0.017], targetOut: [null, null, null], invalidation: null },
+        { ratio: "SOL/BTC", numerator: "SOL", denominator: "BTC", multiplier: 1000, targetIn: [1.08, 0.7, 0.5], targetOut: [1.75, null, null], invalidation: null },
+        { ratio: "SOL/ETH", numerator: "SOL", denominator: "ETH", multiplier: 100, targetIn: [3.3, 2, 0.67], targetOut: [null, null, null], invalidation: null },
+        // BCH
+        { ratio: "BCH/BTC", numerator: "BCH", denominator: "BTC", targetIn: [0.00568, 0.0055, 0.00522], targetOut: [null, null, null], invalidation: null },
+        { ratio: "BCH/ETH", numerator: "BCH", denominator: "ETH", targetIn: [0.14, null, null], targetOut: [0.23, null, null], invalidation: null },
+        { ratio: "BCH/SOL", numerator: "BCH", denominator: "SOL", targetIn: [4.16, 3.3, 1.92], targetOut: [5, 6.88, 8.6], invalidation: null },
+        // XMR
+        { ratio: "XMR/BTC", numerator: "XMR", denominator: "BTC", multiplier: 1000, targetIn: [6.5, 5, 4], targetOut: [9.5, 11.65, null], invalidation: null },
         // HYPE
-        { ratio: "HYPE/BTC", numerator: "HYPE", denominator: "BTC", multiplier: 10000, targetIn: [2.65, 2, 1.5], targetOut: [null, null, null], invalidation: null },
+        { ratio: "HYPE/BTC", numerator: "HYPE", denominator: "BTC", multiplier: 10000, targetIn: [2, 1.5, null], targetOut: [2.65, null, null], invalidation: null },
         { ratio: "HYPE/ETH", numerator: "HYPE", denominator: "ETH", multiplier: 1000, targetIn: [6.34, null, null], targetOut: [null, null, null], invalidation: null },
         { ratio: "HYPE/SOL", numerator: "HYPE", denominator: "SOL", multiplier: 10, targetIn: [1.5, 1.25, 1], targetOut: [null, null, null], invalidation: null },
+        { ratio: "HYPE/BCH", numerator: "HYPE", denominator: "BCH", multiplier: 100, targetIn: [3.7, null, null], targetOut: [4.4, null, null], invalidation: null },
       ],
     };
 
@@ -848,7 +864,7 @@
     };
 
     // Actifs OG/Cypherpunk - marqués avec †
-    const OG_ASSETS = new Set(["BTC", "BCH", "XMR", "KAS", "DOGE"]);
+    const OG_ASSETS = new Set(["BTC", "BCH", "XMR", "KAS"]);
     const formatAssetName = (name) => OG_ASSETS.has(name) ? `${name} †` : name;
 
     // Highlight certains tickers en vert dans un texte
