@@ -534,6 +534,33 @@
         { param: "SOCIAL RISK", ...getParam("SOCIAL RISK") },
       ],
 
+      // Earnings HIP-3 stocks - dates des rapports trimestriels
+      // Mettre à jour après chaque earnings avec la prochaine date
+      earningsHIP3: [
+        // Passed
+        { ticker: "INTC", date: "22 Jan 2026", timing: "After Close", status: "passed", dexes: "xyz", notes: "Q4 2025" },
+        { ticker: "NFLX", date: "21 Jan 2026", timing: "After Close", status: "passed", dexes: "xyz", notes: "Q4 2025" },
+        // This week
+        { ticker: "TSLA", date: "28 Jan 2026", timing: "After Close", status: "thisweek", dexes: "flx, km, cash", notes: "Q4 2025 - PAUSE BOT!" },
+        { ticker: "AAPL", date: "29 Jan 2026", timing: "After Close", status: "thisweek", dexes: "xyz, km, flx, cash", notes: "Q1 FY2026" },
+        { ticker: "MSFT", date: "29 Jan 2026", timing: "After Close", status: "thisweek", dexes: "xyz, flx, cash", notes: "Q2 FY2026" },
+        { ticker: "META", date: "29 Jan 2026", timing: "After Close", status: "thisweek", dexes: "xyz, cash", notes: "Q4 2025" },
+        // February
+        { ticker: "PLTR", date: "2 Fév 2026", timing: "After Market", status: "", dexes: "xyz", notes: "Q4 2025" },
+        { ticker: "AMD", date: "3 Fév 2026", timing: "After Market", status: "", dexes: "xyz", notes: "Q4 2025" },
+        { ticker: "MSTR", date: "3 Fév 2026", timing: "After Close", status: "", dexes: "xyz", notes: "Q4 2025" },
+        { ticker: "GOOGL", date: "4 Fév 2026", timing: "After Close", status: "", dexes: "xyz, cash", notes: "Q4 2025" },
+        { ticker: "AMZN", date: "6 Fév 2026", timing: "After Close", status: "", dexes: "xyz, cash", notes: "Q4 2025" },
+        { ticker: "HOOD", date: "10 Fév 2026", timing: "After Close", status: "", dexes: "xyz", notes: "Q4 2025" },
+        { ticker: "RIVN", date: "12 Fév 2026", timing: "After Market", status: "", dexes: "xyz", notes: "Q4 2025" },
+        { ticker: "COIN", date: "12 Fév 2026", timing: "After Market", status: "", dexes: "xyz, flx", notes: "Q4 2025" },
+        { ticker: "BABA", date: "19 Fév 2026", timing: "Before Open", status: "", dexes: "xyz, km", notes: "Q3 FY2026" },
+        { ticker: "NVDA", date: "25 Fév 2026", timing: "After Close", status: "", dexes: "xyz, km, flx, cash", notes: "Q4 FY2026" },
+        // March
+        { ticker: "ORCL", date: "9 Mar 2026", timing: "After Close", status: "", dexes: "xyz", notes: "Q3 FY2026" },
+        { ticker: "MU", date: "25 Mar 2026", timing: "After Close", status: "", dexes: "xyz", notes: "Q2 FY2026" },
+      ],
+
       calendrier: [
         { date: "6 Jan 2026", event: "MSCI Décision", type: "Indices", status: "bullish", signal: "✓ Entreprises crypto gardées (temporaire)", notes: "MSTR, Metaplanet restent - consultation plus large à venir" },
         { date: "2026", event: "MSCI Consultation", type: "Indices", status: "neutre", signal: "Revue traitement 'non-operating companies'", notes: "Pourrait affecter entreprises BTC treasury, date TBD" },
@@ -1134,6 +1161,8 @@
     );
 
     const TabCalendrier = () => {
+      const [subTab, setSubTab] = useState("macro"); // "macro" or "earnings"
+
       // Déterminer si un événement est cette semaine (ou période en cours)
       const isThisWeek = (dateStr) => {
         const now = new Date();
@@ -1350,8 +1379,161 @@
         "Emploi": "#0a0f1a"
       }[type] || "transparent");
 
+      // Earnings HIP-3 filtering
+      const earningsThisWeek = data.earningsHIP3.filter(e => e.status === "thisweek");
+      const earningsUpcoming = data.earningsHIP3.filter(e => e.status !== "thisweek" && e.status !== "passed");
+      const earningsPassed = data.earningsHIP3.filter(e => e.status === "passed");
+
       return (
         <>
+          {/* Sub-tabs navigation */}
+          <div style={{
+            display: "flex",
+            gap: 0,
+            marginBottom: 16,
+            borderBottom: "1px solid #333"
+          }}>
+            <button
+              onClick={() => setSubTab("macro")}
+              style={{
+                padding: "10px 20px",
+                background: subTab === "macro" ? "rgba(109, 227, 160, 0.15)" : "transparent",
+                border: "none",
+                borderBottom: subTab === "macro" ? "2px solid #6de3a0" : "2px solid transparent",
+                color: subTab === "macro" ? "#6de3a0" : "#666",
+                fontWeight: 600,
+                fontSize: 12,
+                cursor: "pointer",
+                textTransform: "uppercase",
+                letterSpacing: 1
+              }}
+            >
+              Macro / Économie
+            </button>
+            <button
+              onClick={() => setSubTab("earnings")}
+              style={{
+                padding: "10px 20px",
+                background: subTab === "earnings" ? "rgba(245, 158, 11, 0.15)" : "transparent",
+                border: "none",
+                borderBottom: subTab === "earnings" ? "2px solid #f59e0b" : "2px solid transparent",
+                color: subTab === "earnings" ? "#f59e0b" : "#666",
+                fontWeight: 600,
+                fontSize: 12,
+                cursor: "pointer",
+                textTransform: "uppercase",
+                letterSpacing: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 8
+              }}
+            >
+              Earnings HIP-3
+              {earningsThisWeek.length > 0 && (
+                <span style={{
+                  background: "#ef4444",
+                  color: "#fff",
+                  padding: "2px 6px",
+                  borderRadius: 10,
+                  fontSize: 10,
+                  fontWeight: 700
+                }}>{earningsThisWeek.length}</span>
+              )}
+            </button>
+          </div>
+
+          {/* EARNINGS SUB-TAB */}
+          {subTab === "earnings" && (
+            <>
+              {/* This week earnings alert */}
+              {earningsThisWeek.length > 0 && (
+                <div style={{
+                  marginBottom: 16,
+                  padding: 16,
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.5)",
+                  borderLeft: "4px solid #ef4444"
+                }}>
+                  <div style={{ color: "#ef4444", fontWeight: 700, marginBottom: 8, fontSize: 13 }}>
+                    ⚠️ EARNINGS CETTE SEMAINE - PAUSE BOT RECOMMANDÉE
+                  </div>
+                  {earningsThisWeek.map((e, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 0", borderTop: i > 0 ? "1px solid rgba(239, 68, 68, 0.2)" : "none" }}>
+                      <span style={{ color: "#fff", fontWeight: 700, minWidth: 60 }}>{e.ticker}</span>
+                      <span style={{ color: "#888", fontSize: 11, minWidth: 90 }}>{e.date}</span>
+                      <span style={{ color: "#666", fontSize: 10 }}>{e.timing}</span>
+                      <span style={{ color: "#f59e0b", fontSize: 10, marginLeft: "auto" }}>{e.dexes}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Upcoming earnings */}
+              <div className="corner-box">
+                <div className="section-header">EARNINGS À VENIR</div>
+                <div style={{ display: "grid", gridTemplateColumns: "60px 90px 1fr 80px 1fr", gap: 8, padding: "8px 12px", borderBottom: "1px solid #333", color: "#555", fontSize: 10, textTransform: "uppercase" }}>
+                  <span>Ticker</span>
+                  <span>Date</span>
+                  <span>Timing</span>
+                  <span>Dexes</span>
+                  <span>Notes</span>
+                </div>
+                {earningsUpcoming.map((e, i) => (
+                  <div key={i} style={{
+                    display: "grid",
+                    gridTemplateColumns: "60px 90px 1fr 80px 1fr",
+                    gap: 8,
+                    padding: "10px 12px",
+                    borderBottom: "1px solid #222",
+                    background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.02)"
+                  }}>
+                    <span style={{ color: "#6de3a0", fontWeight: 700 }}>{e.ticker}</span>
+                    <span style={{ color: "#888", fontSize: 11 }}>{e.date}</span>
+                    <span style={{ color: "#666", fontSize: 11 }}>{e.timing}</span>
+                    <span style={{ color: "#f59e0b", fontSize: 10 }}>{e.dexes}</span>
+                    <span style={{ color: "#555", fontSize: 10 }}>{e.notes}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Passed earnings */}
+              {earningsPassed.length > 0 && (
+                <details className="corner-box" style={{ marginTop: 16 }}>
+                  <summary style={{ color: "#666", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "12px 16px", borderBottom: "1px solid #222" }}>
+                    PASSÉS ({earningsPassed.length})
+                  </summary>
+                  <div style={{ opacity: 0.6 }}>
+                    {earningsPassed.map((e, i) => (
+                      <div key={i} style={{
+                        display: "grid",
+                        gridTemplateColumns: "60px 90px 1fr 80px 1fr",
+                        gap: 8,
+                        padding: "8px 12px",
+                        borderBottom: "1px solid #222"
+                      }}>
+                        <span style={{ color: "#555", fontWeight: 600 }}>{e.ticker}</span>
+                        <span style={{ color: "#555", fontSize: 11 }}>{e.date}</span>
+                        <span style={{ color: "#444", fontSize: 11 }}>{e.timing}</span>
+                        <span style={{ color: "#665500", fontSize: 10 }}>{e.dexes}</span>
+                        <span style={{ color: "#444", fontSize: 10 }}>{e.notes}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {/* Info box */}
+              <div style={{ marginTop: 16, padding: 12, background: "rgba(109, 227, 160, 0.05)", border: "1px solid rgba(109, 227, 160, 0.2)", fontSize: 11, color: "#666" }}>
+                <strong style={{ color: "#6de3a0" }}>Note:</strong> Mettre à jour les dates après chaque earnings.
+                Les entreprises annoncent généralement ~1 trimestre à l'avance.
+                Pause recommandée sur les paires concernées le jour du rapport.
+              </div>
+            </>
+          )}
+
+          {/* MACRO SUB-TAB */}
+          {subTab === "macro" && (
+          <>
           {/* Résumé de la semaine */}
           <div style={{
             marginBottom: 16,
@@ -1506,6 +1688,8 @@
                 ))}
               </div>
             </details>
+          )}
+          </>
           )}
         </>
       );
