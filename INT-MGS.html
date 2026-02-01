@@ -65,12 +65,9 @@
     const cgCorrections = {
       "XMR":   { mcapMultiplier: 1.0, rankOffset: 6 },    // CG 18 → CMC 12
       "BCH":   { mcapMultiplier: 1.0, rankOffset: 5 },    // CG 16 → CMC 11
-      "LINK":  { mcapMultiplier: 1.0, rankOffset: 8 },    // CG 21 → CMC 13
       "HYPE":  { mcapMultiplier: 1.27, rankOffset: 15 },  // CG 30 → CMC 15, mcap 5.68B → 7.2B
-      "AAVE":  { mcapMultiplier: 1.0, rankOffset: 15 },   // CG 51 → CMC 36
       "ASTER": { mcapMultiplier: 0.89, rankOffset: 16 },  // CG 62 → CMC 46, mcap 1.8B → 1.6B
       "PUMP":  { mcapMultiplier: 0.87, rankOffset: -3 },  // CG 68 → CMC 71, mcap 1.0B → 0.87B
-      "KAS":   { mcapMultiplier: 1.0, rankOffset: 34 },   // CG 91 → CMC 57
       "LIT":   { mcapMultiplier: 0.9, rankOffset: 56 }    // CG 154 → CMC 98, mcap 0.5B → 0.45B
     };
 
@@ -90,7 +87,7 @@
 
     // Rangs statiques (companiesmarketcap.com - màj manuelle)
     const staticRanks = {
-      "SPX": 0, "NASDAQ": 0,
+      "SPX": 0,
       "GOLD": 1, "NVDA": 2, "SILVER": 3, "GOOG": 4, "AAPL": 5,
       "MSFT": 6, "AMZN": 7, "TSM": 9, "META": 10, "AVGO": 11,
       "TSLA": 13, "PLAT": 26, "PALLAD": 50
@@ -102,7 +99,7 @@
     // Liste des symboles non-crypto (pour éviter conflit avec crypto)
     const yahooSymbols = {
       "GOLD": true, "SILVER": true, "PLAT": true, "PALLAD": true,
-      "SPX": true, "NASDAQ": true,
+      "SPX": true,
       "NVDA": true, "GOOG": true, "AAPL": true, "MSFT": true,
       "AMZN": true, "TSM": true, "META": true, "AVGO": true, "TSLA": true
     };
@@ -141,20 +138,12 @@
           }
         });
 
-        // Indices SPX et NASDAQ via ETF proxies
-        const [spyResponse, qqqResponse] = await Promise.all([
-          fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${apiKey}`),
-          fetch(`https://finnhub.io/api/v1/quote?symbol=QQQ&token=${apiKey}`)
-        ]);
-
+        // Indice SPX via ETF proxy
+        const spyResponse = await fetch(`https://finnhub.io/api/v1/quote?symbol=SPY&token=${apiKey}`);
         const spyQuote = await spyResponse.json();
-        const qqqQuote = await qqqResponse.json();
 
         if (spyQuote?.c) {
           data["SPX"] = { rank: 0, price: Math.round(spyQuote.c * 10), change24h: 0 }; // SPY * 10 ≈ SPX
-        }
-        if (qqqQuote?.c) {
-          data["NASDAQ"] = { rank: 0, price: Math.round(qqqQuote.c * 43), change24h: 0 }; // QQQ * 43 ≈ NASDAQ
         }
 
         return data;
@@ -347,9 +336,8 @@
       "PLAT": { rank: 26, price: 2278, marketCap: 569.45e9 },
       "PALLAD": { rank: 50, price: 1874, marketCap: 327.95e9 },
 
-      // Indices
+      // Indice
       "SPX": { rank: 0, price: 6966.29, marketCap: null },
-      "NASDAQ": { rank: 0, price: 25759, marketCap: null },
 
       // Actions (rang global assets)
       "NVDA": { rank: 2, price: 184.86, marketCap: 4.500e12 },
@@ -398,7 +386,7 @@
       // ============================================
       "BTC": {
         status: "bearish",
-        signal: "Fin cycle, 100k possible CT, LT ~60k",
+        signal: "Fin cycle, LT ~60k",
         m: "bearish", h: "neutre", j: "neutre",
         ticker: "BTCUSD", type: "Crypto", secteur: "POW L1",
         category: "actif", importance: "haute"
@@ -416,24 +404,25 @@
       // ============================================
       "WALCL": { status: "bullish", signal: "QT terminé, stealth QE = légèrement bullish", ticker: "FRED:WALCL", category: "macro", importance: "haute" },
       "DXY": { status: "neutre", signal: "Aucune idée, analyser macro?", ticker: "TVC:DXY", category: "macro", importance: "moyenne" },
-      "SPX": { status: "neutre", signal: "Lier au dashboard", ticker: "SP:SPX", category: "macro", importance: "moyenne" },
-      "NASDAQ": { status: "neutre", signal: "Lier au dashboard", ticker: "NASDAQ:NDX", category: "macro", importance: "basse" },
+      "SPX": { status: "neutre", signal: "Bull structurel mais SPX/GOLD bearish", m: "neutre", h: "neutre", j: "neutre", ticker: "SP:SPX", category: "macro", importance: "moyenne" },
       "SPY/RSP": { status: "neutre", signal: "Top 10 = 40% du S&P, tendance bullish mais niveaux premium", ticker: "SPY/RSP", category: "macro", importance: "basse" },
       "EUR/USD": { status: "neutre", signal: "Aucune idée, analyser macro?", ticker: "FX:EURUSD", category: "macro", importance: "basse" },
 
       // ============================================
       // RATIOS - Ratios entre actifs
       // ============================================
-      "GOLD/SPX": { status: "bullish", signal: "Cup & handle D/W, résistance ou poussée puis fin bullrun métaux", ticker: "GOLDUSD/SPX", category: "ratio", importance: "moyenne" },
-      "BTC/GOLD": { status: "bearish", signal: "Distribution confirmée. Supports 16 13 9", ticker: "BTCUSD/GOLDUSD", category: "ratio", importance: "moyenne" },
-      "BTC/SPX": { status: "neutre", signal: "Supports 1000 900 740", ticker: "BTCUSD/SPX", category: "ratio", importance: "moyenne" },
-      "ETH/BTC": { status: "neutre", signal: "ETH solide mais pas d'alt saison", ticker: "ETHBTC", category: "ratio", importance: "haute" },
+      "GOLD/SPX": { status: "bullish", signal: "Cup & handle D & W confirmée, poussée puis fin bullrun métaux", ticker: "GOLDUSD/SPX", category: "ratio", importance: "moyenne" },
+      "BTC/GOLD": { status: "bearish", signal: "Commence à être bas mais pas terminé, 13, 9", ticker: "BTCUSD/GOLDUSD", category: "ratio", importance: "moyenne" },
+      "BTC/SPX": { status: "bearish", signal: "Supports 1000 900 740", ticker: "BTCUSD/SPX", category: "ratio", importance: "moyenne" },
+      "ETH/BTC": { status: "bearish", signal: "Higher low à venir ou retour au bas de range?", ticker: "ETHBTC", category: "ratio", importance: "haute" },
       "SOL/BTC": { status: "bearish", signal: "Pas d'alt saison", ticker: "SOLUSD/BTCUSD", category: "ratio", importance: "moyenne" },
       "SOL/ETH": { status: "bearish", signal: "Bearish, sans commentaire", ticker: "SOLUSD/ETHUSD", category: "ratio", importance: "moyenne" },
+      "BCH/GOLD": { status: "neutre", signal: "", ticker: "BCHUSD/GOLDUSD", category: "ratio", importance: "moyenne" },
       "BCH/BTC": { status: "bullish", signal: "Uptrend, support à 0.0052", ticker: "BCHUSD/BTCUSD", category: "ratio", importance: "moyenne" },
       "BCH/ETH": { status: "bullish", signal: "Latéralise UP après des années de downtrend", ticker: "BCHUSD/ETHUSD", category: "ratio", importance: "moyenne" },
       "BCH/SOL": { status: "bullish", signal: "Ressemble à GOLD/BTC, uptrend", ticker: "BCHUSD/SOLUSD", category: "ratio", importance: "moyenne" },
       "XMR/BTC": { status: "bullish", signal: "Break descending wedge mais en surchauffe, gros risque", ticker: "XMRUSD/BTCUSD", category: "ratio", importance: "moyenne" },
+      "HYPE/GOLD": { status: "neutre", signal: "", ticker: "HYPEUSD/GOLDUSD", category: "ratio", importance: "moyenne" },
       "HYPE/BTC": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/BTCUSD", category: "ratio", importance: "moyenne" },
       "HYPE/ETH": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/ETHUSD", category: "ratio", importance: "moyenne" },
       "HYPE/SOL": { status: "bearish", signal: "HYPE faible, voir cibles onglet trading", ticker: "HYPEUSD/SOLUSD", category: "ratio", importance: "moyenne" },
@@ -443,7 +432,7 @@
       // FLUX CRYPTO - Dominance et flux
       // ============================================
       "STABLES.D": { status: "bullish", signal: "Structure haussière, pullback possible CT", ticker: "(CRYPTOCAP:USDT+CRYPTOCAP:USDC)/CRYPTOCAP:TOTAL", category: "flux", importance: "haute" },
-      "BTC.D": { status: "neutre", signal: "Dominance élevée, baisse possible même si BTC baisse", ticker: "CRYPTOCAP:BTC.D", category: "flux", importance: "haute" },
+      "BTC.D": { status: "bullish", signal: "Dominance élevée, baisse possible même si BTC baisse", ticker: "CRYPTOCAP:BTC.D", category: "flux", importance: "haute" },
       "ALTS/BTC": { status: "bearish", signal: "Bas mais ne rentrer sur alts que sur dips, Target 1 26", ticker: "(CRYPTOCAP:TOTAL3-CRYPTOCAP:USDT)/CRYPTOCAP:BTC*100", category: "flux", importance: "haute" },
 
       // ============================================
@@ -464,10 +453,7 @@
       "BTC": "https://s2.coinmarketcap.com/static/img/coins/64x64/1.png",
       "ETH": "https://s2.coinmarketcap.com/static/img/coins/64x64/1027.png",
       "SOL": "https://s2.coinmarketcap.com/static/img/coins/64x64/5426.png",
-      "LINK": "https://s2.coinmarketcap.com/static/img/coins/64x64/1975.png",
       "XMR": "https://s2.coinmarketcap.com/static/img/coins/64x64/328.png",
-      "AAVE": "https://s2.coinmarketcap.com/static/img/coins/64x64/7278.png",
-      "KAS": "https://s2.coinmarketcap.com/static/img/coins/64x64/20396.png",
       "HYPE": "https://s2.coinmarketcap.com/static/img/coins/64x64/32196.png",
       "LIT": "https://s2.coinmarketcap.com/static/img/coins/64x64/39125.png",
       "PUMP": "https://s2.coinmarketcap.com/static/img/coins/64x64/36507.png",
@@ -500,7 +486,7 @@
     const data = {
       lastUpdate: "18/01/2026 22:00",
       globalSentiment: "bullish",
-      summary: "Métaux Momentum, GOLD canal D achat 4400 vente 5000, GOLD/SPX Cup n Handle D & W | STABLES.D bullish, ALTS/BTC bearish, BTC retest 100K possible CT, BCH observer",
+      summary: "Métaux surchauffe et mega crash, GOLD canal D, GOLD/SPX Cup n Handle D & W | STABLES.D bullish, ALTS/BTC bearish, BTC bear rebond CT possible",
 
       recentEvents: "Trump: Tarifs 10% → 25% sur 8 pays EU pour Groenland (1 Fév) | CLARITY Act: Coinbase retire son support (stocks onchain interdits, stablecoin rewards limités) - proba passage 93% → 49% | Rate cuts en pause, 2 prévues 2026 | Fin QT + stealth QE",
 
@@ -515,10 +501,10 @@
 
       situation: [
         { secteur: "Métaux", m: "neutre", h: "bullish", j: "bullish", action: "Momentum, GOLD canal D achat 4400 vente 5000" },
-        { secteur: "Actions US", m: "neutre", h: "neutre", j: "neutre", action: "Bull structurel mais SPX/GOLD bearish" },
+        { secteur: "Actions US", m: getParam("SPX").m, h: getParam("SPX").h, j: getParam("SPX").j, action: getParam("SPX").signal },
         { secteur: "BTC", m: getParam("BTC").m, h: getParam("BTC").h, j: getParam("BTC").j, action: getParam("BTC").signal },
         { secteur: "ETH", m: getParam("ETH").m, h: getParam("ETH").h, j: getParam("ETH").j, action: getParam("ETH").signal },
-        { secteur: "Altcoins", m: "bearish", h: "bearish", j: "bearish", action: "(TOTAL3-USDT)/BTC bearish. In que sur dips, exception XMR et BCH." },
+        { secteur: "Altcoins", m: "bearish", h: "bearish", j: "bearish", action: "(TOTAL3-USDT)/BTC bearish" },
       ],
 
       // Vue globale du Dashboard - utilise les paramètres partagés
@@ -652,10 +638,12 @@
         { param: "ETH/BTC", ...getParam("ETH/BTC"), notes: "Ratio bas historique ~0.035" },
         { param: "SOL/BTC", ...getParam("SOL/BTC"), notes: "SOL vs BTC" },
         { param: "SOL/ETH", ...getParam("SOL/ETH"), notes: "SOL vs ETH" },
+        { param: "BCH/GOLD", ...getParam("BCH/GOLD"), notes: "BCH vs GOLD" },
         { param: "BCH/BTC", ...getParam("BCH/BTC"), notes: "BCH vs BTC" },
         { param: "BCH/ETH", ...getParam("BCH/ETH"), notes: "BCH vs ETH" },
         { param: "BCH/SOL", ...getParam("BCH/SOL"), notes: "BCH vs SOL" },
         { param: "XMR/BTC", ...getParam("XMR/BTC"), notes: "XMR vs BTC" },
+        { param: "HYPE/GOLD", ...getParam("HYPE/GOLD"), notes: "HYPE vs GOLD" },
         { param: "HYPE/BTC", ...getParam("HYPE/BTC"), notes: "HYPE vs BTC" },
         { param: "HYPE/ETH", ...getParam("HYPE/ETH"), notes: "HYPE vs ETH" },
         { param: "HYPE/SOL", ...getParam("HYPE/SOL"), notes: "HYPE vs SOL" },
@@ -675,7 +663,6 @@
         { actif: "PALLAD", type: "Commodity", secteur: "Métaux", status: "bullish", signal: "Animal spirits", cible: "", ticker: "PALLADUSD", notes: "" },
         // Actions
         { actif: "SPX", type: "Action", secteur: "Indice", status: getParam("SPX").status, signal: getParam("SPX").signal, cible: "", ticker: "^GSPC", notes: "S&P 500" },
-        { actif: "NASDAQ", type: "Action", secteur: "Indice", status: getParam("NASDAQ").status, signal: getParam("NASDAQ").signal, cible: "", ticker: "^IXIC", notes: "Nasdaq Composite" },
         { actif: "NVDA", type: "Action", secteur: "AI", status: "neutre", signal: "Bitpanda. Bull, nvx premium", cible: "", ticker: "NVDA", notes: "Nvidia" },
         { actif: "GOOG", type: "Action", secteur: "Tech", status: "neutre", signal: "Bitpanda. Bull, nvx premium", cible: "", ticker: "GOOG", notes: "Alphabet" },
         { actif: "AAPL", type: "Action", secteur: "Tech", status: "neutre", signal: "Bitpanda. Bull, nvx premium", cible: "", ticker: "AAPL", notes: "Apple" },
@@ -688,15 +675,12 @@
         { actif: "BTC", type: getParam("BTC").type, secteur: getParam("BTC").secteur, status: getParam("BTC").status, signal: getParam("BTC").signal, cible: "", ticker: getParam("BTC").ticker, notes: "" },
         { actif: "ETH", type: getParam("ETH").type, secteur: getParam("ETH").secteur, status: getParam("ETH").status, signal: getParam("ETH").signal, cible: "", ticker: getParam("ETH").ticker, notes: "" },
         { actif: "SOL", type: "Crypto", secteur: "POS L1", status: "bearish", signal: "Bulltards absorbed", cible: "", ticker: "SOLUSD", notes: "" },
-        { actif: "LINK", type: "Crypto", secteur: "RWA", status: "bearish", signal: "Sur support, problème revenus", cible: "", ticker: "LINKUSD", notes: "Chainlink" },
-        { actif: "XMR", type: "Crypto", secteur: "Privacy", status: "bullish", signal: "Trend bullish mais surchauffe, rentrer sur dips mais risque", cible: "", ticker: "XMRUSD", notes: "Monero" },
-        { actif: "HYPE", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Pas encore, BTC/ETH/SOL", cible: "", ticker: "HYPEUSD", notes: "Hyperliquid" },
-        { actif: "AAVE", type: "Crypto", secteur: "DeFi", status: "bearish", signal: "Sur support, problème revenus", cible: "", ticker: "AAVEUSD", notes: "" },
-        { actif: "ASTER", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Niveaux intéressants mais situation crypto", cible: "", ticker: "ASTERUSD", notes: "asterdex.com" },
-        { actif: "PUMP", type: "Crypto", secteur: "Memes", status: "bearish", signal: "Niveaux intéressants, revenus", cible: "", ticker: "PUMPUSD", notes: "pump.fun" },
-        { actif: "KAS", type: "Crypto", secteur: "POW L1", status: "bearish", signal: "Désintérêt, tente quelque chose en D, un jour re-IN", cible: "", ticker: "KASUSD", notes: "Kaspa" },
-        { actif: "LIT", type: "Crypto", secteur: "Perps", status: "bearish", signal: "Niveaux intéressants mais situation crypto", cible: "", ticker: "LITUSD", notes: "Lighter" },
-        { actif: "BCH", type: "Crypto", secteur: "POW L1", status: "bullish", signal: "Log M breakout et retest", cible: "", ticker: "BCHUSD", notes: "Bitcoin Cash" },
+        { actif: "XMR", type: "Crypto", secteur: "Privacy", status: "bearish", signal: "Trend bullish mais surchauffe, rentrer sur dips mais risque, crypto bearish", cible: "", ticker: "XMRUSD", notes: "Monero" },
+        { actif: "HYPE", type: "Crypto", secteur: "Perps", status: "neutre", signal: "HIP-3 succès mais association crypto. Mega réaction, voir ratios mais 1er choix quand il faudra in les cryptos. Calculer valuation en fonction des revenus/potentiel de croissance", cible: "", ticker: "HYPEUSD", notes: "Hyperliquid" },
+        { actif: "ASTER", type: "Crypto", secteur: "Perps", status: "bearish", signal: "HYPE et HIP-3 gagnent, calculer valuation en fonction des revenus/potentiel de croissance", cible: "", ticker: "ASTERUSD", notes: "asterdex.com" },
+        { actif: "PUMP", type: "Crypto", secteur: "Memes", status: "bearish", signal: "Calculer valuation en fonction des revenus/potentiel de croissance", cible: "", ticker: "PUMPUSD", notes: "pump.fun" },
+        { actif: "LIT", type: "Crypto", secteur: "Perps", status: "bearish", signal: "HYPE et HIP-3 gagnent, calculer valuation en fonction des revenus/potentiel de croissance", cible: "", ticker: "LITUSD", notes: "Lighter" },
+        { actif: "BCH", type: "Crypto", secteur: "POW L1", status: "bearish", signal: "Log M breakout et retest, crypto bearish", cible: "", ticker: "BCHUSD", notes: "Bitcoin Cash" },
       ],
 
       defi: [
@@ -832,19 +816,16 @@
 
       // Trading - Prix individuels et Ratios avec cibles multiples (3 IN, 3 OUT) + invalidation
       tradingPrix: [
-        { actif: "BTC", targetIn: [74000, 60000, null], targetOut: [98000, 105000, null], invalidation: null },
-        { actif: "ETH", targetIn: [2000, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "BTC", targetIn: [74000, 60000, 50000], targetOut: [98000, 105000, null], invalidation: null },
+        { actif: "ETH", targetIn: [2000, 1535, 1088], targetOut: [null, null, null], invalidation: null },
         { actif: "SOL", targetIn: [80, 50, 40], targetOut: [null, null, null], invalidation: null },
-        { actif: "XMR", targetIn: [520, 400, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "BCH", targetIn: [550, 480, 450], targetOut: [1800, 2800, 4000], invalidation: 450 },
-        { actif: "HYPE", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "AAVE", targetIn: [75, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "LINK", targetIn: [7.8, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "KAS", targetIn: [0.032, 0.02, 0.015], targetOut: [null, null, null], invalidation: null },
-        { actif: "PUMP", targetIn: [0.0015, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "XMR", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
+        { actif: "BCH", targetIn: [480, 275, null], targetOut: [614, 1800, 2800], invalidation: 450 },
+        { actif: "HYPE", targetIn: [28.6, 21, 15.32], targetOut: [35, null, null], invalidation: null },
+        { actif: "PUMP", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "LIT", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
         { actif: "ASTER", targetIn: [null, null, null], targetOut: [null, null, null], invalidation: null },
-        { actif: "GOLD", targetIn: [4400, null, null], targetOut: [5000, null, null], invalidation: null },
+        { actif: "GOLD", targetIn: [4800, 4500, null], targetOut: [5000, 6000, null], invalidation: null },
       ],
 
       tradingRatios: [
@@ -852,7 +833,7 @@
         { ratio: "GOLD/SPX", numerator: "GOLD", denominator: "SPX", targetIn: [null, null, null], targetOut: [0.8, 0.95, 1.15], invalidation: null },
         { ratio: "STABLES.D", type: "dominance", numerator: ["USDT", "USDC"], targetIn: [null, null, null], targetOut: [11, 15, 17], invalidation: null },
         // BTC relatif
-        { ratio: "BTC/GOLD", numerator: "BTC", denominator: "GOLD", targetIn: [16, 13, 9], targetOut: [22, null, null], invalidation: null },
+        { ratio: "BTC/GOLD", numerator: "BTC", denominator: "GOLD", targetIn: [14, 13, 9], targetOut: [22, null, null], invalidation: null },
         { ratio: "BTC/SPX", numerator: "BTC", denominator: "SPX", multiplier: 100, targetIn: [1000, 900, 740], targetOut: [null, null, null], invalidation: null },
         { ratio: "BTC.D", type: "dominance", numerator: "BTC", targetIn: [null, null, null], targetOut: [72, null, null], invalidation: null },
         // Alts vs BTC
@@ -861,17 +842,54 @@
         { ratio: "SOL/BTC", numerator: "SOL", denominator: "BTC", multiplier: 1000, targetIn: [1.08, 0.7, 0.5], targetOut: [1.75, null, null], invalidation: null },
         { ratio: "SOL/ETH", numerator: "SOL", denominator: "ETH", multiplier: 100, targetIn: [3.3, 2, 0.67], targetOut: [null, null, null], invalidation: null },
         // BCH
+        { ratio: "BCH/GOLD", numerator: "BCH", denominator: "GOLD", multiplier: 100, targetIn: [8.5, 5.3, null], targetOut: [14, null, null], invalidation: null },
         { ratio: "BCH/BTC", numerator: "BCH", denominator: "BTC", targetIn: [0.00568, 0.0055, 0.00522], targetOut: [null, null, null], invalidation: null },
         { ratio: "BCH/ETH", numerator: "BCH", denominator: "ETH", targetIn: [0.14, null, null], targetOut: [0.23, null, null], invalidation: null },
-        { ratio: "BCH/SOL", numerator: "BCH", denominator: "SOL", targetIn: [4.16, 3.3, 1.92], targetOut: [5, 6.88, 8.6], invalidation: null },
-        // XMR
-        { ratio: "XMR/BTC", numerator: "XMR", denominator: "BTC", multiplier: 1000, targetIn: [3.5, 0.5, null], targetOut: [6.5, 9.5, 11.65], invalidation: null },
+        { ratio: "BCH/SOL", numerator: "BCH", denominator: "SOL", targetIn: [5.14, null, null], targetOut: [8.5, 12.2, 16], invalidation: null },
         // HYPE
-        { ratio: "HYPE/BTC", numerator: "HYPE", denominator: "BTC", multiplier: 10000, targetIn: [2, 1.5, null], targetOut: [2.7, 3.15, null], invalidation: null },
-        { ratio: "HYPE/ETH", numerator: "HYPE", denominator: "ETH", multiplier: 1000, targetIn: [6.34, null, null], targetOut: [null, null, null], invalidation: null },
-        { ratio: "HYPE/SOL", numerator: "HYPE", denominator: "SOL", multiplier: 10, targetIn: [1.5, 1.25, 1], targetOut: [null, null, null], invalidation: null },
-        { ratio: "HYPE/BCH", numerator: "HYPE", denominator: "BCH", multiplier: 100, targetIn: [null, null, null], targetOut: [3.7, 4.4, null], invalidation: null },
+        { ratio: "HYPE/GOLD", numerator: "HYPE", denominator: "GOLD", multiplier: 1000, targetIn: [5.2, 4.67, 3.32], targetOut: [null, null, null], invalidation: null },
+        { ratio: "HYPE/BTC", numerator: "HYPE", denominator: "BTC", multiplier: 10000, targetIn: [3.2, 2.7, 2], targetOut: [4.1, 5.0, null], invalidation: null },
+        { ratio: "HYPE/ETH", numerator: "HYPE", denominator: "ETH", multiplier: 1000, targetIn: [10, 6.34, null], targetOut: [13, 16.64, null], invalidation: null },
+        { ratio: "HYPE/SOL", numerator: "HYPE", denominator: "SOL", multiplier: 10, targetIn: [2.5, 2, null], targetOut: [3, null, null], invalidation: null },
+        { ratio: "HYPE/BCH", numerator: "HYPE", denominator: "BCH", multiplier: 100, targetIn: [3.8, null, null], targetOut: [6.7, 9.7, null], invalidation: null },
+        // XMR
+        { ratio: "XMR/BTC", numerator: "XMR", denominator: "BTC", multiplier: 1000, targetIn: [5.15, 3.5, null], targetOut: [6.5, 9.5, 11.65], invalidation: null },
       ],
+
+      // ============================================
+      // MATRICE DE FORCE RELATIVE
+      // Chaque cellule = status du ratio ligne/colonne
+      // bullish = ligne > colonne, bearish = ligne < colonne
+      // ============================================
+      matrixAssets: ["GOLD", "BTC", "ETH", "SOL", "HYPE", "BCH", "XMR"],
+      matrixData: {
+        // Format: "ASSET1/ASSET2": "bullish" | "bearish" | "neutre"
+        "BTC/GOLD": "bearish",
+        "ETH/GOLD": "bearish",
+        "ETH/BTC": "bearish",
+        "SOL/GOLD": "bearish",
+        "SOL/BTC": "bearish",
+        "SOL/ETH": "neutre",
+        "BCH/GOLD": "bearish",
+        "BCH/BTC": "bullish",
+        "BCH/ETH": "bullish",
+        "BCH/SOL": "bullish",
+        "HYPE/GOLD": "bearish",
+        "HYPE/BTC": "bullish",
+        "HYPE/ETH": "bullish",
+        "HYPE/SOL": "bullish",
+        "HYPE/BCH": "neutre",
+      },
+      // Notes par actif pour la matrice (commentaires trading)
+      matrixNotes: {
+        "GOLD": "Megaboss",
+        "BTC": "Attendre bottom vs GOLD",
+        "ETH": "À éviter pour l'instant à part si gros dips contre le reste",
+        "SOL": "À éviter pour l'instant à part si gros dips contre le reste",
+        "HYPE": "Si bottom vs GOLD voir si la situation vs BTC, ETH et SOL a changé",
+        "BCH": "Si bottom vs GOLD voir si la situation vs BTC, ETH et SOL a changé",
+        "XMR": "? à investiguer",
+      },
     };
 
     // ============================================
@@ -891,7 +909,7 @@
     };
 
     // Actifs OG/Cypherpunk - marqués avec †
-    const OG_ASSETS = new Set(["BTC", "BCH", "XMR", "KAS"]);
+    const OG_ASSETS = new Set(["BTC", "BCH", "XMR"]);
     const formatAssetName = (name) => OG_ASSETS.has(name) ? `${name} †` : name;
 
     // Highlight certains tickers en vert dans un texte
@@ -2511,70 +2529,111 @@
         return <span style={{ color, fontSize: 11 }}>{target ? target + suffix : "—"}</span>;
       };
 
+      // Fonction pour obtenir le status d'un ratio (gère l'inversion)
+      const getMatrixStatus = (asset1, asset2) => {
+        if (asset1 === asset2) return null; // Diagonale
+        const key = `${asset1}/${asset2}`;
+        const reverseKey = `${asset2}/${asset1}`;
+        if (data.matrixData[key]) return data.matrixData[key];
+        if (data.matrixData[reverseKey]) {
+          // Inverser le status
+          const rev = data.matrixData[reverseKey];
+          if (rev === "bullish") return "bearish";
+          if (rev === "bearish") return "bullish";
+          return rev;
+        }
+        return "neutre"; // Par défaut
+      };
+
+      // Calculer le score de chaque actif
+      const calculateScores = () => {
+        const scores = {};
+        data.matrixAssets.forEach(asset => { scores[asset] = 0; });
+
+        data.matrixAssets.forEach((asset1, i) => {
+          data.matrixAssets.forEach((asset2, j) => {
+            if (i >= j) return; // Éviter les doublons et la diagonale
+            const status = getMatrixStatus(asset1, asset2);
+            if (status === "bullish") {
+              scores[asset1] += 1;
+              scores[asset2] -= 1;
+            } else if (status === "bearish") {
+              scores[asset1] -= 1;
+              scores[asset2] += 1;
+            }
+          });
+        });
+        return scores;
+      };
+
+      const scores = calculateScores();
+      const sortedAssets = [...data.matrixAssets].sort((a, b) => scores[b] - scores[a]);
+
       return (
         <>
-          <div className="trading-grid">
-            {/* Ratios Calculés - EN PREMIER */}
-            <div className="corner-box">
-              <div className="col-header">RATIOS CALCULÉS</div>
-              <div className="trading-header">
-                <span style={{ width: 80 }}>Ratio</span>
-                <span style={{ width: 60, textAlign: "right" }}>Valeur</span>
-                <span style={{ width: 45, textAlign: "right" }}>IN 1</span>
-                <span style={{ width: 50, textAlign: "right" }}>%</span>
-                <span style={{ width: 45, textAlign: "right" }}>IN 2</span>
-                <span style={{ width: 50, textAlign: "right" }}>%</span>
-                <span style={{ width: 45, textAlign: "right" }}>IN 3</span>
-                <span style={{ width: 50, textAlign: "right" }}>%</span>
-                <span style={{ width: 45, textAlign: "right" }}>OUT 1</span>
-                <span style={{ width: 50, textAlign: "right" }}>%</span>
-                <span style={{ width: 45, textAlign: "right" }}>OUT 2</span>
-                <span style={{ width: 50, textAlign: "right" }}>%</span>
-                <span style={{ width: 45, textAlign: "right" }}>OUT 3</span>
-                <span style={{ width: 50, textAlign: "right" }}>%</span>
-                <span style={{ width: 55, textAlign: "right", color: "#ff6b35" }}>INVAL</span>
+          {/* Matrice de Force Relative */}
+          <div className="corner-box" style={{ marginBottom: 16 }}>
+            <div className="col-header">MATRICE DE FORCE RELATIVE</div>
+            <div style={{ display: "flex", gap: 24, padding: "12px" }}>
+              {/* Matrice */}
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ borderCollapse: "collapse", fontSize: 11 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ padding: "4px 8px", color: "#666" }}></th>
+                      {data.matrixAssets.map(asset => (
+                        <th key={asset} style={{ padding: "4px 8px", color: "#888", fontWeight: 600 }}>{asset}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.matrixAssets.map((rowAsset, i) => (
+                      <tr key={rowAsset}>
+                        <td style={{ padding: "4px 8px", color: "#888", fontWeight: 600 }}>{rowAsset}</td>
+                        {data.matrixAssets.map((colAsset, j) => {
+                          // Afficher seulement le triangle inférieur (i > j)
+                          if (i <= j) {
+                            return <td key={colAsset} style={{ padding: "4px 8px", textAlign: "center", color: "#222" }}>—</td>;
+                          }
+                          const status = getMatrixStatus(rowAsset, colAsset);
+                          const color = status === "bullish" ? "#8DECB0" : status === "bearish" ? "#ff6b35" : "#555";
+                          const symbol = status === "bullish" ? "▲" : status === "bearish" ? "▼" : "•";
+                          return (
+                            <td key={colAsset} style={{ padding: "4px 8px", textAlign: "center", color }}>
+                              {symbol}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              {data.tradingRatios.map((row, i) => {
-                const ratioValue = calculateRatioValue(row);
-                const status = getTargetStatus(row.targetIn, row.targetOut, ratioValue);
-                // Formatage selon le type de ratio
-                const formatRatioDisplay = () => {
-                  if (!ratioValue) return "—";
-                  if (row.type === "dominance") return ratioValue.toFixed(1) + "%";
-                  if (row.type === "alts") return ratioValue.toFixed(1);
-                  if (row.multiplier) return ratioValue.toFixed(ratioValue >= 100 ? 0 : 2);
-                  return ratioValue.toFixed(ratioValue < 1 ? 4 : 2);
-                };
-                return (
-                  <div key={i} className="trading-row" style={getHighlightStyle(status)}>
-                    <span className="row-label" style={{ color: "#888", width: 80 }}>{row.ratio}</span>
-                    <span style={{ color: "#888", fontSize: 11, width: 60, textAlign: "right" }}>{formatRatioDisplay()}</span>
-                    {row.targetIn.map((t, j) => {
-                      const suffix = row.type === "dominance" ? "%" : "";
-                      return (
-                        <React.Fragment key={`in-${j}`}>
-                          <span style={{ width: 45, textAlign: "right" }}>{renderTargetRatio(t, false, suffix)}</span>
-                          <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentIn(calcDistance(ratioValue, t))}</span>
-                        </React.Fragment>
-                      );
-                    })}
-                    {row.targetOut.map((t, j) => {
-                      const suffix = row.type === "dominance" ? "%" : "";
-                      return (
-                        <React.Fragment key={`out-${j}`}>
-                          <span style={{ width: 45, textAlign: "right" }}>{renderTargetRatio(t, true, suffix)}</span>
-                          <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentOut(calcDistance(ratioValue, t))}</span>
-                        </React.Fragment>
-                      );
-                    })}
-                    <span style={{ width: 55, textAlign: "right", fontSize: 11, color: row.invalidation ? "#ff6b35" : "#333" }}>
-                      {row.invalidation ? row.invalidation : "—"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
 
+              {/* Classement + Notes */}
+              <div style={{ flex: 1 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "100px 40px 1fr", gap: "4px 12px", alignItems: "center" }}>
+                  <div style={{ color: "#666", fontSize: 10, textTransform: "uppercase" }}>Classement</div>
+                  <div style={{ color: "#666", fontSize: 10, textTransform: "uppercase" }}>Score</div>
+                  <div style={{ color: "#666", fontSize: 10, textTransform: "uppercase" }}>Notes</div>
+                  {sortedAssets.map((asset, i) => {
+                    const color = scores[asset] > 0 ? "#8DECB0" : scores[asset] < 0 ? "#ff6b35" : "#666";
+                    const isCrypto = asset !== "GOLD";
+                    const notesColor = isCrypto ? "#ff6b35" : "#8DECB0";
+                    return (
+                      <React.Fragment key={asset}>
+                        <span style={{ color }}>{i + 1}. {asset}</span>
+                        <span style={{ color, fontWeight: 600 }}>{scores[asset] > 0 ? "+" : ""}{scores[asset]}</span>
+                        <span style={{ color: notesColor, fontSize: 11 }}>{data.matrixNotes[asset] || "—"}</span>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="trading-grid">
             {/* Actifs - Trié par MCap */}
             <div className="corner-box">
               <div className="col-header">ACTIFS</div>
@@ -2647,6 +2706,67 @@
                       fontSize: 11, width: 50, textAlign: "right"
                     }}>
                       {ind?.rsi14 ? ind.rsi14.toFixed(0) : "—"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Ratios Calculés */}
+            <div className="corner-box">
+              <div className="col-header">RATIOS CALCULÉS</div>
+              <div className="trading-header">
+                <span style={{ width: 80 }}>Ratio</span>
+                <span style={{ width: 60, textAlign: "right" }}>Valeur</span>
+                <span style={{ width: 45, textAlign: "right" }}>IN 1</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 45, textAlign: "right" }}>IN 2</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 45, textAlign: "right" }}>IN 3</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 45, textAlign: "right" }}>OUT 1</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 45, textAlign: "right" }}>OUT 2</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 45, textAlign: "right" }}>OUT 3</span>
+                <span style={{ width: 50, textAlign: "right" }}>%</span>
+                <span style={{ width: 55, textAlign: "right", color: "#ff6b35" }}>INVAL</span>
+              </div>
+              {data.tradingRatios.map((row, i) => {
+                const ratioValue = calculateRatioValue(row);
+                const status = getTargetStatus(row.targetIn, row.targetOut, ratioValue);
+                // Formatage selon le type de ratio
+                const formatRatioDisplay = () => {
+                  if (!ratioValue) return "—";
+                  if (row.type === "dominance") return ratioValue.toFixed(1) + "%";
+                  if (row.type === "alts") return ratioValue.toFixed(1);
+                  if (row.multiplier) return ratioValue.toFixed(ratioValue >= 100 ? 0 : 2);
+                  return ratioValue.toFixed(ratioValue < 1 ? 4 : 2);
+                };
+                return (
+                  <div key={i} className="trading-row" style={getHighlightStyle(status)}>
+                    <span className="row-label" style={{ color: "#888", width: 80 }}>{row.ratio}</span>
+                    <span style={{ color: "#888", fontSize: 11, width: 60, textAlign: "right" }}>{formatRatioDisplay()}</span>
+                    {row.targetIn.map((t, j) => {
+                      const suffix = row.type === "dominance" ? "%" : "";
+                      return (
+                        <React.Fragment key={`in-${j}`}>
+                          <span style={{ width: 45, textAlign: "right" }}>{renderTargetRatio(t, false, suffix)}</span>
+                          <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentIn(calcDistance(ratioValue, t))}</span>
+                        </React.Fragment>
+                      );
+                    })}
+                    {row.targetOut.map((t, j) => {
+                      const suffix = row.type === "dominance" ? "%" : "";
+                      return (
+                        <React.Fragment key={`out-${j}`}>
+                          <span style={{ width: 45, textAlign: "right" }}>{renderTargetRatio(t, true, suffix)}</span>
+                          <span style={{ fontSize: 11, width: 50, textAlign: "right" }}>{formatPercentOut(calcDistance(ratioValue, t))}</span>
+                        </React.Fragment>
+                      );
+                    })}
+                    <span style={{ width: 55, textAlign: "right", fontSize: 11, color: row.invalidation ? "#ff6b35" : "#333" }}>
+                      {row.invalidation ? row.invalidation : "—"}
                     </span>
                   </div>
                 );
